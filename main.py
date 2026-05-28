@@ -22,7 +22,11 @@ from pydantic import BaseModel
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[logging.StreamHandler(sys.stderr)],
+)
 logger = logging.getLogger(__name__)
 
 from db.database import FinanceDatabase
@@ -352,11 +356,21 @@ async def categorize_hint(description: str, is_income: int = 0):
 # ══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    # Windows 終端 UTF-8 相容設定
+    if sys.platform == "win32":
+        import os
+        os.system("chcp 65001 >nul 2>&1")
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     PORT = 8765
-    print(f"\n  💰 消費分析工具 啟動中...")
-    print(f"  📡 伺服器地址: http://localhost:{PORT}")
-    print(f"  📂 資料庫: {db.db_path}")
-    print(f"  ℹ️  共 {db.count_transactions()} 筆交易記錄")
+    print(f"\n  [消費分析工具] 啟動中...")
+    print(f"  伺服器地址: http://localhost:{PORT}")
+    print(f"  資料庫: {db.db_path}")
+    print(f"  共 {db.count_transactions()} 筆交易記錄")
     print(f"  按 Ctrl+C 停止\n")
 
     # 延遲開啟瀏覽器
