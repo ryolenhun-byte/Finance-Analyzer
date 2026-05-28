@@ -289,10 +289,14 @@
       <button onclick="closeModal('modal-import')" class="text-slate-400 hover:text-white text-xl">✕</button>
     </div>
     <div id="modal-drop-zone" class="drop-zone mb-4">
-      <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileSelect(this)">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.pdf" style="display:none" onchange="handleFileSelect(this)">
       <div class="text-4xl mb-3">📂</div>
       <div class="text-slate-300 font-medium mb-1">拖曳檔案到此處，或點擊選擇</div>
-      <div class="text-xs text-slate-500">支援 CSV、Excel（.xlsx/.xls）</div>
+      <div class="text-xs text-slate-400 mt-1">
+        <span class="badge" style="background:#45B7D122;color:#45B7D1">CSV</span>
+        <span class="badge" style="background:#96CEB422;color:#96CEB4">Excel</span>
+        <span class="badge" style="background:#FF6B6B22;color:#FF6B6B">PDF</span>
+      </div>
       <div class="text-xs text-slate-600 mt-2">玉山 / 國泰 / 中信 / 台新 / 一般格式</div>
       <button class="btn btn-secondary mt-4 text-sm" onclick="document.getElementById('file-input').click()">選擇檔案</button>
     </div>

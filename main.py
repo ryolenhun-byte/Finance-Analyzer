@@ -118,7 +118,7 @@ async def delete_transaction(tx_id: int):
 
 @app.post("/api/import")
 async def import_file(file: UploadFile = File(...)):
-    """上傳 CSV / Excel 並自動解析、分類、存入資料庫"""
+    """上傳 CSV / Excel / PDF 並自動解析、分類、存入資料庫"""
     content  = await file.read()
     filename = file.filename or "upload"
 

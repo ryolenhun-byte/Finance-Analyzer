@@ -11,5 +11,4 @@ chardet>=5.2.0            # 自動偵測檔案編碼
 
 anthropic>=0.40.0         # Claude AI SDK（串流 + Prompt Caching）
 
-# PDF 解析（可選，未來支援）
-# pdfplumber>=0.10.0
+pdfplumber>=0.10.0        # PDF 銀行帳單解析
