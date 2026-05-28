@@ -1,0 +1,15 @@
+# 消費分析工具 — 依賴清單
+# 安裝: pip install -r requirements.txt
+
+fastapi>=0.111.0          # Web 框架
+uvicorn[standard]>=0.29.0 # ASGI 伺服器
+python-multipart>=0.0.9   # 檔案上傳支援
+
+pandas>=2.2.0             # CSV / Excel 解析
+openpyxl>=3.1.0           # Excel (.xlsx) 支援
+chardet>=5.2.0            # 自動偵測檔案編碼
+
+anthropic>=0.40.0         # Claude AI SDK（串流 + Prompt Caching）
+
+# PDF 解析（可選，未來支援）
+# pdfplumber>=0.10.0

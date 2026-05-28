@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💰 消費分析</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --accent: #6366f1;
+    --accent-light: #818cf8;
+  }
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  .sidebar-link { @apply flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer transition-all; }
+  .sidebar-link.active { @apply text-white bg-indigo-600; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .btn { display: inline-flex; align-items: center; gap-6px; padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; border: none; transition: all .15s; font-weight: 500; }
+  .btn-primary { background: #6366f1; color: white; }
+  .btn-primary:hover { background: #4f46e5; }
+  .btn-secondary { background: #334155; color: #e2e8f0; }
+  .btn-secondary:hover { background: #475569; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-danger:hover { background: #b91c1c; }
+  .input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none; }
+  .input:focus { border-color: #6366f1; }
+  select.input option { background: #1e293b; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  /* 拖曳區 */
+  .drop-zone { border: 2px dashed #334155; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all .2s; }
+  .drop-zone:hover, .drop-zone.dragging { border-color: #6366f1; background: rgba(99,102,241,.08); }
+  /* 進度條 */
+  .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #0f172a; padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+  td { padding: 10px 12px; border-bottom: 1px solid #1e293b; font-size: 14px; }
+  tr:hover td { background: rgba(99,102,241,.05); }
+  /* AI 輸出 */
+  #ai-output { white-space: pre-wrap; line-height: 1.7; font-size: 14px; }
+  #ai-output h1, #ai-output h2, #ai-output h3 { color: #818cf8; margin: 12px 0 6px; }
+  #ai-output strong { color: #fbbf24; }
+  #ai-output code { background: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  /* 捲軸 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  .spinner { width: 20px; height: 20px; border: 2px solid #334155; border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 20px; z-index: 9999; transform: translateY(80px); opacity: 0; transition: all .3s; max-width: 320px; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-left: 3px solid #10b981; }
+  .toast.error   { border-left: 3px solid #ef4444; }
+  .toast.info    { border-left: 3px solid #6366f1; }
+  /* Modal */
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; display:none; align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#1e293b; border:1px solid #334155; border-radius:16px; padding:28px; width:90%; max-width:480px; }
+</style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+<!-- ══════ Sidebar ══════ -->
+<aside class="w-60 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col p-4 gap-1">
+  <div class="flex items-center gap-2 px-2 py-4 mb-2">
+    <span class="text-2xl">💰</span>
+    <div>
+      <div class="font-bold text-white text-base">消費分析</div>
+      <div class="text-xs text-slate-500" id="sidebar-count">載入中...</div>
+    </div>
+  </div>
+  <a class="sidebar-link active" data-tab="dashboard">📊 <span>儀表板</span></a>
+  <a class="sidebar-link" data-tab="transactions">📋 <span>交易記錄</span></a>
+  <a class="sidebar-link" data-tab="budget">🎯 <span>預算管理</span></a>
+  <a class="sidebar-link" data-tab="ai">🤖 <span>AI 分析</span></a>
+  <a class="sidebar-link" data-tab="settings">⚙️ <span>設定</span></a>
+  <div class="flex-1"></div>
+  <div class="text-xs text-slate-600 px-2">v1.0 · 本地運行</div>
+</aside>
+
+<!-- ══════ Main ══════ -->
+<main class="flex-1 overflow-auto">
+
+<!-- ────── 儀表板 ────── -->
+<div id="tab-dashboard" class="tab-panel active p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-bold text-white">儀表板</h1>
+    <div class="flex items-center gap-2">
+      <select id="dash-year"  class="input text-sm w-24"></select>
+      <select id="dash-month" class="input text-sm w-20"></select>
+    </div>
+  </div>
+
+  <!-- 摘要卡片 -->
+  <div class="grid grid-cols-4 gap-4 mb-6" id="summary-cards">
+    <div class="card"><div class="text-xs text-slate-400 mb-1">本月支出</div><div class="text-2xl font-bold text-red-400" id="s-expense">—</div><div class="text-xs text-slate-500 mt-1" id="s-expense-cmp"></div></div>
+    <div class="card"><div class="text-xs text-slate-400 mb-1">上月支出</div><div class="text-2xl font-bold text-slate-300" id="s-prev-expense">—</div></div>
+    <div class="card"><div class="text-xs text-slate-400 mb-1">本月收入</div><div class="text-2xl font-bold text-emerald-400" id="s-income">—</div></div>
+    <div class="card"><div class="text-xs text-slate-400 mb-1">淨結餘</div><div class="text-2xl font-bold" id="s-net">—</div></div>
+  </div>
+
+  <!-- 圖表列 -->
+  <div class="grid grid-cols-2 gap-4 mb-6">
+    <div class="card"><div class="text-sm font-semibold text-slate-300 mb-3">📌 本月支出類別分布</div><div class="flex justify-center" style="height:220px"><canvas id="chart-pie"></canvas></div></div>
+    <div class="card"><div class="text-sm font-semibold text-slate-300 mb-3">📈 近 6 個月支出趨勢</div><canvas id="chart-bar" height="220"></canvas></div>
+  </div>
+
+  <!-- 最常消費 + 最近交易 -->
+  <div class="grid grid-cols-2 gap-4">
+    <div class="card">
+      <div class="text-sm font-semibold text-slate-300 mb-3">🏆 本月消費TOP 8</div>
+      <div id="top-merchants"></div>
+    </div>
+    <div class="card">
+      <div class="text-sm font-semibold text-slate-300 mb-3">🕐 最近 10 筆</div>
+      <div id="recent-tx"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ────── 交易記錄 ────── -->
+<div id="tab-transactions" class="tab-panel p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold text-white">交易記錄</h1>
+    <div class="flex gap-2">
+      <button class="btn btn-secondary" onclick="openImportModal()">📤 匯入檔案</button>
+      <button class="btn btn-primary"   onclick="openAddTxModal()">＋ 新增</button>
+    </div>
+  </div>
+
+  <!-- 篩選列 -->
+  <div class="flex gap-2 mb-4 flex-wrap">
+    <input id="tx-search"    class="input" placeholder="🔍 搜尋描述..." style="width:180px" oninput="loadTransactions()">
+    <input id="tx-start"     class="input" type="date" onchange="loadTransactions()">
+    <input id="tx-end"       class="input" type="date" onchange="loadTransactions()">
+    <select id="tx-category" class="input" onchange="loadTransactions()"><option value="">全部類別</option></select>
+    <select id="tx-type"     class="input" onchange="loadTransactions()">
+      <option value="">全部</option>
+      <option value="0">支出</option>
+      <option value="1">收入</option>
+    </select>
+    <button class="btn btn-secondary" onclick="clearTxFilters()">✕ 清除</button>
+  </div>
+
+  <!-- 拖曳匯入提示 -->
+  <div id="tx-drop-zone" class="drop-zone mb-4" style="display:none">
+    <div class="text-3xl mb-2">📂</div>
+    <div class="text-slate-400">拖曳 CSV / Excel 到此處快速匯入</div>
+    <div class="text-xs text-slate-600 mt-1">支援：玉山、國泰、中信、台新、一般 CSV</div>
+  </div>
+
+  <!-- 表格 -->
+  <div class="card p-0 overflow-hidden">
+    <table>
+      <thead><tr>
+        <th>日期</th><th>描述</th><th>類別</th>
+        <th class="text-right">金額</th><th>備註</th><th>操作</th>
+      </tr></thead>
+      <tbody id="tx-table-body"></tbody>
+    </table>
+    <div id="tx-pagination" class="flex items-center justify-between p-3 border-t border-slate-800 text-sm text-slate-400"></div>
+  </div>
+</div>
+
+<!-- ────── 預算管理 ────── -->
+<div id="tab-budget" class="tab-panel p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-bold text-white">預算管理</h1>
+    <div class="flex items-center gap-2">
+      <select id="budget-year"  class="input text-sm w-24"></select>
+      <select id="budget-month" class="input text-sm w-20"></select>
+      <button class="btn btn-primary" onclick="openAddBudgetModal()">＋ 設定預算</button>
+    </div>
+  </div>
+
+  <div id="budget-list" class="grid gap-3"></div>
+  <div id="budget-empty" class="card text-center text-slate-500 py-12" style="display:none">
+    <div class="text-4xl mb-3">🎯</div>
+    <div>尚未設定預算。點擊「設定預算」為各類別設定每月上限。</div>
+  </div>
+</div>
+
+<!-- ────── AI 分析 ────── -->
+<div id="tab-ai" class="tab-panel p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold text-white">🤖 AI 消費分析</h1>
+  </div>
+
+  <!-- 分析類型選擇 -->
+  <div class="grid grid-cols-4 gap-3 mb-6">
+    <div class="card cursor-pointer ai-type-card active" data-type="monthly_review" onclick="selectAIType(this)">
+      <div class="text-2xl mb-1">📊</div>
+      <div class="font-semibold text-sm">本月綜合分析</div>
+      <div class="text-xs text-slate-500 mt-1">總結本月消費並給出建議</div>
+    </div>
+    <div class="card cursor-pointer ai-type-card" data-type="habits" onclick="selectAIType(this)">
+      <div class="text-2xl mb-1">🔄</div>
+      <div class="font-semibold text-sm">消費習慣分析</div>
+      <div class="text-xs text-slate-500 mt-1">找出消費規律與問題模式</div>
+    </div>
+    <div class="card cursor-pointer ai-type-card" data-type="saving_tips" onclick="selectAIType(this)">
+      <div class="text-2xl mb-1">💡</div>
+      <div class="font-semibold text-sm">省錢建議</div>
+      <div class="text-xs text-slate-500 mt-1">具體可行的節省方案</div>
+    </div>
+    <div class="card cursor-pointer ai-type-card" data-type="anomaly" onclick="selectAIType(this)">
+      <div class="text-2xl mb-1">⚠️</div>
+      <div class="font-semibold text-sm">異常偵測</div>
+      <div class="text-xs text-slate-500 mt-1">找出不尋常的消費行為</div>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 mb-4">
+    <select id="ai-year"  class="input text-sm w-24"></select>
+    <select id="ai-month" class="input text-sm w-20"></select>
+    <button id="ai-run-btn" class="btn btn-primary" onclick="runAIAnalysis()">🚀 開始分析</button>
+    <div id="ai-spinner" class="spinner" style="display:none"></div>
+    <span id="ai-status" class="text-sm text-slate-400"></span>
+  </div>
+
+  <div class="card" id="ai-result-card" style="display:none">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm font-semibold text-indigo-400">AI 分析結果</div>
+      <button class="btn btn-secondary text-xs" onclick="copyAIResult()">📋 複製</button>
+    </div>
+    <div id="ai-output" class="text-slate-300"></div>
+  </div>
+
+  <div id="ai-nokey-notice" class="card border-yellow-600 text-yellow-400" style="display:none">
+    ⚠️ 尚未設定 Anthropic API Key。請前往 <strong>設定</strong> 頁面配置後即可使用 AI 分析功能。
+  </div>
+</div>
+
+<!-- ────── 設定 ────── -->
+<div id="tab-settings" class="tab-panel p-6">
+  <h1 class="text-xl font-bold text-white mb-6">⚙️ 設定</h1>
+
+  <div class="grid gap-6 max-w-xl">
+    <!-- API Key -->
+    <div class="card">
+      <div class="font-semibold text-slate-200 mb-4">🤖 Claude AI 設定</div>
+      <label class="text-sm text-slate-400 block mb-1">Anthropic API Key</label>
+      <div class="flex gap-2 mb-2">
+        <input id="api-key-input" type="password" class="input flex-1" placeholder="sk-ant-...">
+        <button class="btn btn-primary" onclick="saveApiKey()">儲存</button>
+      </div>
+      <div id="api-key-status" class="text-xs text-slate-500"></div>
+      <div class="text-xs text-slate-600 mt-2">
+        取得 API Key：<a href="https://console.anthropic.com" target="_blank" class="text-indigo-400 hover:underline">console.anthropic.com</a>
+      </div>
+    </div>
+
+    <!-- 類別管理 -->
+    <div class="card">
+      <div class="font-semibold text-slate-200 mb-3">🏷️ 消費類別</div>
+      <div id="categories-display" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- 資料管理 -->
+    <div class="card border-red-900">
+      <div class="font-semibold text-red-400 mb-3">⚠️ 資料管理</div>
+      <div class="flex gap-3">
+        <button class="btn btn-secondary" onclick="exportData()">📥 匯出 CSV</button>
+        <button class="btn btn-danger" onclick="confirmClearData()">🗑️ 清除所有資料</button>
+      </div>
+      <div class="text-xs text-slate-600 mt-2">清除操作不可復原，請先備份</div>
+    </div>
+
+    <!-- 匯入記錄 -->
+    <div class="card">
+      <div class="font-semibold text-slate-200 mb-3">📦 匯入記錄</div>
+      <div id="import-history"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ══════ Modals ══════ -->
+
+<!-- 匯入檔案 Modal -->
+<div id="modal-import" class="modal-bg">
+  <div class="modal">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-bold text-white text-lg">📤 匯入交易記錄</h3>
+      <button onclick="closeModal('modal-import')" class="text-slate-400 hover:text-white text-xl">✕</button>
+    </div>
+    <div id="modal-drop-zone" class="drop-zone mb-4">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileSelect(this)">
+      <div class="text-4xl mb-3">📂</div>
+      <div class="text-slate-300 font-medium mb-1">拖曳檔案到此處，或點擊選擇</div>
+      <div class="text-xs text-slate-500">支援 CSV、Excel（.xlsx/.xls）</div>
+      <div class="text-xs text-slate-600 mt-2">玉山 / 國泰 / 中信 / 台新 / 一般格式</div>
+      <button class="btn btn-secondary mt-4 text-sm" onclick="document.getElementById('file-input').click()">選擇檔案</button>
+    </div>
+    <div id="import-progress" style="display:none">
+      <div class="flex items-center gap-3 text-slate-300 mb-3">
+        <div class="spinner"></div>
+        <span id="import-status">解析中...</span>
+      </div>
+    </div>
+    <div id="import-result" class="text-sm text-slate-300" style="display:none"></div>
+  </div>
+</div>
+
+<!-- 新增交易 Modal -->
+<div id="modal-add-tx" class="modal-bg">
+  <div class="modal">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-bold text-white text-lg" id="add-tx-title">新增交易</h3>
+      <button onclick="closeModal('modal-add-tx')" class="text-slate-400 hover:text-white text-xl">✕</button>
+    </div>
+    <div class="grid gap-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">日期</label>
+        <input id="tx-form-date" type="date" class="input w-full">
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">描述</label>
+        <input id="tx-form-desc" type="text" class="input w-full" placeholder="消費描述" oninput="autoCategory()">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">金額</label>
+          <input id="tx-form-amount" type="number" step="1" class="input w-full" placeholder="0">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">類型</label>
+          <select id="tx-form-type" class="input w-full">
+            <option value="0">支出</option>
+            <option value="1">收入</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">類別</label>
+        <select id="tx-form-category" class="input w-full"></select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">備註（可選）</label>
+        <input id="tx-form-notes" type="text" class="input w-full" placeholder="">
+      </div>
+      <input type="hidden" id="tx-form-id">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-tx')">取消</button>
+      <button class="btn btn-primary" onclick="submitTxForm()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 預算 Modal -->
+<div id="modal-add-budget" class="modal-bg">
+  <div class="modal">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-bold text-white text-lg">設定預算</h3>
+      <button onclick="closeModal('modal-add-budget')" class="text-slate-400 hover:text-white text-xl">✕</button>
+    </div>
+    <div class="grid gap-3">
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">類別</label>
+        <select id="budget-form-category" class="input w-full"></select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">每月上限金額（NT$）</label>
+        <input id="budget-form-amount" type="number" step="100" class="input w-full" placeholder="例如：5000">
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-budget')">取消</button>
+      <button class="btn btn-primary" onclick="submitBudgetForm()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"><span id="toast-msg"></span></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// State & Constants
+// ══════════════════════════════════════════════════════════
+const state = {
+  currentTab: 'dashboard',
+  aiType: 'monthly_review',
+  categories: [],
+  charts: {},
+  txPage: 0,
+  txTotal: 0,
+  txPageSize: 50,
+};
+
+const CATEGORY_COLORS = {
+  '餐飲':'#FF6B6B','交通':'#4ECDC4','購物':'#45B7D1','娛樂':'#96CEB4',
+  '醫療':'#FFEAA7','教育':'#DDA0DD','住宅':'#98D8C8','旅遊':'#FFB347',
+  '收入':'#10b981','其他':'#9ca3af',
+};
+
+const CATEGORY_ICONS = {
+  '餐飲':'🍽️','交通':'🚌','購物':'🛍️','娛樂':'🎮',
+  '醫療':'🏥','教育':'📚','住宅':'🏠','旅遊':'✈️',
+  '收入':'💵','其他':'📦',
+};
+
+// ══════════════════════════════════════════════════════════
+// API helpers
+// ══════════════════════════════════════════════════════════
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  const res = await fetch('/api' + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+const GET  = path => api('GET', path);
+const POST = (path, body) => api('POST', path, body);
+const PUT  = (path, body) => api('PUT',  path, body);
+const DEL  = path => api('DELETE', path);
+
+// ══════════════════════════════════════════════════════════
+// Tab navigation
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.sidebar-link').forEach(link => {
+  link.addEventListener('click', () => switchTab(link.dataset.tab));
+});
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  state.currentTab = tab;
+
+  const handlers = {
+    dashboard:    loadDashboard,
+    transactions: loadTransactions,
+    budget:       loadBudgets,
+    ai:           initAITab,
+    settings:     loadSettings,
+  };
+  handlers[tab]?.();
+}
+
+// ══════════════════════════════════════════════════════════
+// Year/Month selectors helper
+// ══════════════════════════════════════════════════════════
+function initDateSelectors(yearId, monthId, onChange) {
+  const now = new Date();
+  const yEl = document.getElementById(yearId);
+  const mEl = document.getElementById(monthId);
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 3; y--) {
+    yEl.innerHTML += `<option value="${y}" ${y===now.getFullYear()?'selected':''}>${y}</option>`;
+  }
+  for (let m = 1; m <= 12; m++) {
+    mEl.innerHTML += `<option value="${m}" ${m===now.getMonth()+1?'selected':''}>${m} 月</option>`;
+  }
+  yEl.addEventListener('change', onChange);
+  mEl.addEventListener('change', onChange);
+}
+
+function getYM(yearId, monthId) {
+  return {
+    year:  parseInt(document.getElementById(yearId).value),
+    month: parseInt(document.getElementById(monthId).value),
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+// Dashboard
+// ══════════════════════════════════════════════════════════
+async function loadDashboard() {
+  const { year, month } = getYM('dash-year', 'dash-month');
+
+  try {
+    const [summary, catData, trend, topM, recent] = await Promise.all([
+      GET(`/analysis/summary?year=${year}&month=${month}`),
+      GET(`/analysis/categories?year=${year}&month=${month}`),
+      GET('/analysis/monthly?months=6'),
+      GET(`/analysis/top-merchants?year=${year}&month=${month}`),
+      GET('/analysis/recent?limit=10'),
+    ]);
+
+    renderSummaryCards(summary);
+    renderPieChart(catData.breakdown);
+    renderBarChart(trend);
+    renderTopMerchants(topM);
+    renderRecentTx(recent);
+    updateSidebarCount(summary.total_records);
+  } catch(e) {
+    showToast('載入儀表板失敗: ' + e.message, 'error');
+  }
+}
+
+function renderSummaryCards(d) {
+  const fmt = n => 'NT$ ' + Math.abs(n).toLocaleString('zh-TW', {maximumFractionDigits: 0});
+  document.getElementById('s-expense').textContent = fmt(d.current.expense);
+  document.getElementById('s-prev-expense').textContent = fmt(d.previous.expense);
+  document.getElementById('s-income').textContent  = fmt(d.current.income);
+
+  const net = d.current.net;
+  const netEl = document.getElementById('s-net');
+  netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
+  netEl.className = 'text-2xl font-bold ' + (net >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+  const cmp = document.getElementById('s-expense-cmp');
+  if (d.expense_change !== null) {
+    const up = d.expense_change > 0;
+    cmp.textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.expense_change) + '% 較上月';
+    cmp.className = 'text-xs mt-1 ' + (up ? 'text-red-400' : 'text-emerald-400');
+  }
+}
+
+function renderPieChart(breakdown) {
+  const el = document.getElementById('chart-pie');
+  state.charts.pie?.destroy();
+  if (!breakdown.length) { el.parentElement.innerHTML += '<div class="text-center text-slate-500 py-8">本月無支出記錄</div>'; return; }
+  state.charts.pie = new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: breakdown.map(r => r.category),
+      datasets: [{
+        data: breakdown.map(r => r.total),
+        backgroundColor: breakdown.map(r => CATEGORY_COLORS[r.category] || '#9ca3af'),
+        borderWidth: 2, borderColor: '#1e293b',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#94a3b8', font: {size: 11}, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: NT$${ctx.parsed.toLocaleString()} (${breakdown[ctx.dataIndex]?.pct}%)` } },
+      },
+    },
+  });
+}
+
+function renderBarChart(trend) {
+  const el = document.getElementById('chart-bar');
+  state.charts.bar?.destroy();
+  const months = trend.map(t => `${t.year}/${String(t.month).padStart(2,'0')}`);
+  state.charts.bar = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { label: '支出', data: trend.map(t => t.expense), backgroundColor: '#FF6B6B88', borderColor: '#FF6B6B', borderWidth: 1, borderRadius: 4 },
+        { label: '收入', data: trend.map(t => t.income),  backgroundColor: '#10b98144', borderColor: '#10b981', borderWidth: 1, borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: {size: 11} } } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: {size: 10} }, grid: { color: '#1e293b' } },
+        y: { ticks: { color: '#64748b', font: {size: 10}, callback: v => 'NT$' + v.toLocaleString() }, grid: { color: '#1e293b' } },
+      },
+    },
+  });
+}
+
+function renderTopMerchants(merchants) {
+  const el = document.getElementById('top-merchants');
+  if (!merchants.length) { el.innerHTML = '<div class="text-slate-500 text-sm">無記錄</div>'; return; }
+  const maxVal = merchants[0].total;
+  el.innerHTML = merchants.map(m => `
+    <div class="mb-2">
+      <div class="flex justify-between text-xs mb-1">
+        <span class="text-slate-300 truncate mr-2" style="max-width:160px">${m.description}</span>
+        <span class="text-slate-400 flex-shrink-0">NT$${Math.round(m.total).toLocaleString()} <span class="text-slate-600">(${m.count}次)</span></span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${m.total/maxVal*100}%;background:${CATEGORY_COLORS[m.category]||'#6366f1'}"></div></div>
+    </div>`).join('');
+}
+
+function renderRecentTx(txs) {
+  const el = document.getElementById('recent-tx');
+  el.innerHTML = txs.map(tx => {
+    const icon = CATEGORY_ICONS[tx.category] || '📦';
+    const amt = tx.is_income ? `<span class="text-emerald-400">+${Math.abs(tx.amount).toLocaleString()}</span>` : `<span class="text-red-400">-${Math.abs(tx.amount).toLocaleString()}</span>`;
+    return `<div class="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
+      <div class="flex items-center gap-2">
+        <span>${icon}</span>
+        <div>
+          <div class="text-sm text-slate-200 truncate" style="max-width:140px">${tx.description}</div>
+          <div class="text-xs text-slate-600">${tx.date}</div>
+        </div>
+      </div>
+      <div class="text-sm font-medium">${amt}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateSidebarCount(count) {
+  document.getElementById('sidebar-count').textContent = `${count.toLocaleString()} 筆記錄`;
+}
+
+// ══════════════════════════════════════════════════════════
+// Transactions
+// ══════════════════════════════════════════════════════════
+async function loadTransactions() {
+  const search   = document.getElementById('tx-search')?.value || '';
+  const start    = document.getElementById('tx-start')?.value || '';
+  const end      = document.getElementById('tx-end')?.value || '';
+  const category = document.getElementById('tx-category')?.value || '';
+  const type     = document.getElementById('tx-type')?.value;
+
+  const params = new URLSearchParams({ limit: state.txPageSize, offset: state.txPage * state.txPageSize });
+  if (search)   params.set('search', search);
+  if (start)    params.set('start', start);
+  if (end)      params.set('end', end);
+  if (category) params.set('category', category);
+  if (type !== '') params.set('is_income', type);
+
+  try {
+    const data = await GET('/transactions?' + params);
+    state.txTotal = data.total;
+    renderTxTable(data.data);
+    renderTxPagination();
+  } catch(e) {
+    showToast('載入失敗: ' + e.message, 'error');
+  }
+}
+
+function renderTxTable(txs) {
+  const tbody = document.getElementById('tx-table-body');
+  if (!txs.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-500 py-10">無符合條件的記錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = txs.map(tx => {
+    const icon = CATEGORY_ICONS[tx.category] || '📦';
+    const color = CATEGORY_COLORS[tx.category] || '#9ca3af';
+    const amtClass = tx.is_income ? 'text-emerald-400' : 'text-red-400';
+    const amtSign  = tx.is_income ? '+' : '-';
+    const amt = `${amtSign}NT$${Math.abs(tx.amount).toLocaleString('zh-TW', {maximumFractionDigits: 0})}`;
+    return `<tr>
+      <td class="text-slate-400 text-xs">${tx.date}</td>
+      <td class="text-slate-200 font-medium" style="max-width:200px"><div class="truncate">${tx.description}</div></td>
+      <td><span class="badge" style="background:${color}22;color:${color}">${icon} ${tx.category}</span></td>
+      <td class="text-right font-medium ${amtClass}">${amt}</td>
+      <td class="text-slate-500 text-xs">${tx.notes || ''}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="editTx(${tx.id})" class="btn btn-secondary text-xs px-2 py-1">編輯</button>
+          <button onclick="deleteTx(${tx.id})" class="btn btn-danger text-xs px-2 py-1">刪</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTxPagination() {
+  const el = document.getElementById('tx-pagination');
+  const total = state.txTotal;
+  const page  = state.txPage;
+  const pages = Math.ceil(total / state.txPageSize);
+  el.innerHTML = `
+    <span>共 ${total.toLocaleString()} 筆，第 ${page + 1} / ${Math.max(1, pages)} 頁</span>
+    <div class="flex gap-1">
+      <button ${page === 0 ? 'disabled' : ''} onclick="txPageChange(${page-1})" class="btn btn-secondary text-xs px-2 py-1">‹ 上頁</button>
+      <button ${page >= pages - 1 ? 'disabled' : ''} onclick="txPageChange(${page+1})" class="btn btn-secondary text-xs px-2 py-1">下頁 ›</button>
+    </div>`;
+}
+
+function txPageChange(p) { state.txPage = p; loadTransactions(); }
+
+function clearTxFilters() {
+  ['tx-search','tx-start','tx-end'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('tx-category').value = '';
+  document.getElementById('tx-type').value = '';
+  state.txPage = 0;
+  loadTransactions();
+}
+
+async function deleteTx(id) {
+  if (!confirm('確定刪除這筆記錄？')) return;
+  try { await DEL('/transactions/' + id); showToast('已刪除', 'success'); loadTransactions(); }
+  catch(e) { showToast('刪除失敗', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// Add/Edit Transaction
+// ══════════════════════════════════════════════════════════
+function openAddTxModal(tx) {
+  document.getElementById('add-tx-title').textContent = tx ? '編輯交易' : '新增交易';
+  document.getElementById('tx-form-id').value    = tx?.id || '';
+  document.getElementById('tx-form-date').value  = tx?.date || new Date().toISOString().slice(0,10);
+  document.getElementById('tx-form-desc').value  = tx?.description || '';
+  document.getElementById('tx-form-amount').value = tx ? Math.abs(tx.amount) : '';
+  document.getElementById('tx-form-type').value  = tx?.is_income ?? 0;
+  document.getElementById('tx-form-notes').value = tx?.notes || '';
+
+  const catSel = document.getElementById('tx-form-category');
+  catSel.innerHTML = state.categories.map(c =>
+    `<option value="${c.name}" ${c.name===tx?.category?'selected':''}>${c.icon} ${c.name}</option>`
+  ).join('');
+  if (tx?.category) catSel.value = tx.category;
+
+  openModal('modal-add-tx');
+}
+
+async function editTx(id) {
+  try {
+    const txs = await GET('/transactions?limit=1&offset=0&search='); // workaround
+    const allRows = await GET(`/transactions?limit=500&offset=0`);
+    const tx = allRows.data.find(t => t.id === id);
+    openAddTxModal(tx);
+  } catch(e) { showToast('載入失敗', 'error'); }
+}
+
+async function submitTxForm() {
+  const id     = document.getElementById('tx-form-id').value;
+  const date   = document.getElementById('tx-form-date').value;
+  const desc   = document.getElementById('tx-form-desc').value.trim();
+  const amount = parseFloat(document.getElementById('tx-form-amount').value);
+  const type   = parseInt(document.getElementById('tx-form-type').value);
+  const cat    = document.getElementById('tx-form-category').value;
+  const notes  = document.getElementById('tx-form-notes').value;
+
+  if (!date || !desc || isNaN(amount)) { showToast('請填寫完整資訊', 'error'); return; }
+
+  const body = { date, description: desc, amount: type ? amount : -amount, is_income: type, category: cat, notes };
+  try {
+    if (id) { await PUT('/transactions/' + id, body); showToast('已更新', 'success'); }
+    else    { await POST('/transactions', body);       showToast('已新增', 'success'); }
+    closeModal('modal-add-tx');
+    loadTransactions();
+    if (state.currentTab === 'dashboard') loadDashboard();
+  } catch(e) { showToast('儲存失敗: ' + e.message, 'error'); }
+}
+
+async function autoCategory() {
+  const desc = document.getElementById('tx-form-desc').value;
+  if (desc.length < 2) return;
+  try {
+    const r = await GET('/categorize?description=' + encodeURIComponent(desc));
+    document.getElementById('tx-form-category').value = r.category;
+  } catch(_) {}
+}
+
+// ══════════════════════════════════════════════════════════
+// Import
+// ══════════════════════════════════════════════════════════
+function openImportModal() {
+  document.getElementById('import-result').style.display = 'none';
+  document.getElementById('import-progress').style.display = 'none';
+  openModal('modal-import');
+}
+
+function handleFileSelect(input) {
+  if (input.files[0]) uploadFile(input.files[0]);
+}
+
+async function uploadFile(file) {
+  const progress = document.getElementById('import-progress');
+  const status   = document.getElementById('import-status');
+  const result   = document.getElementById('import-result');
+  progress.style.display = 'block';
+  result.style.display   = 'none';
+  status.textContent = `解析 ${file.name}...`;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/import', { method: 'POST', body: fd });
+    const data = await res.json();
+    progress.style.display = 'none';
+    result.style.display = 'block';
+    if (data.success) {
+      result.innerHTML = `<div class="text-emerald-400 font-medium mb-1">✓ ${data.message}</div><div class="text-slate-500 text-xs">來源識別：${data.source} | 匯入批次 #${data.import_id}</div>`;
+      showToast(data.message, 'success');
+      setTimeout(() => { closeModal('modal-import'); loadTransactions(); if(state.currentTab==='dashboard') loadDashboard(); }, 1500);
+    } else {
+      result.innerHTML = `<div class="text-yellow-400">⚠️ ${data.message}</div>`;
+    }
+  } catch(e) {
+    progress.style.display = 'none';
+    result.style.display = 'block';
+    result.innerHTML = `<div class="text-red-400">✗ 匯入失敗：${e.message}</div>`;
+    showToast('匯入失敗', 'error');
+  }
+}
+
+// Drag & drop
+function initDragDrop(zoneId, onFile) {
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragging');
+    const f = e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+  zone.addEventListener('click', () => document.getElementById('file-input').click());
+}
+
+// ══════════════════════════════════════════════════════════
+// Budget
+// ══════════════════════════════════════════════════════════
+async function loadBudgets() {
+  const { year, month } = getYM('budget-year', 'budget-month');
+  try {
+    const budgets = await GET(`/budgets?year=${year}&month=${month}`);
+    renderBudgets(budgets);
+  } catch(e) { showToast('載入預算失敗', 'error'); }
+}
+
+function renderBudgets(budgets) {
+  const list  = document.getElementById('budget-list');
+  const empty = document.getElementById('budget-empty');
+  if (!budgets.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = budgets.map(b => {
+    const pct   = Math.min(b.pct, 100);
+    const color = b.pct >= 100 ? '#ef4444' : b.pct >= 80 ? '#f59e0b' : '#10b981';
+    const icon  = CATEGORY_ICONS[b.category] || '📦';
+    const warn  = b.pct >= 80 ? `<span class="badge ml-2" style="background:#f59e0b22;color:#f59e0b">${b.pct >= 100 ? '⚠️ 超支' : '⚠️ 接近'}</span>` : '';
+    return `<div class="card">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span>${icon}</span>
+          <span class="font-medium text-slate-200">${b.category}</span>
+          ${warn}
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-slate-400">NT$${Math.round(b.spent).toLocaleString()} / NT$${Math.round(b.limit_amount).toLocaleString()}</span>
+          <button onclick="deleteBudget(${b.id})" class="text-slate-600 hover:text-red-400 text-sm">✕</button>
+        </div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="text-xs text-slate-500 mt-1 text-right">${b.pct}% 已使用  ·  剩餘 NT$${Math.max(0, Math.round(b.limit_amount - b.spent)).toLocaleString()}</div>
+    </div>`;
+  }).join('');
+}
+
+function openAddBudgetModal() {
+  const { year, month } = getYM('budget-year', 'budget-month');
+  const catSel = document.getElementById('budget-form-category');
+  catSel.innerHTML = state.categories.filter(c => c.name !== '收入').map(c =>
+    `<option value="${c.name}">${c.icon} ${c.name}</option>`
+  ).join('');
+  document.getElementById('budget-form-amount').value = '';
+  openModal('modal-add-budget');
+}
+
+async function submitBudgetForm() {
+  const { year, month } = getYM('budget-year', 'budget-month');
+  const cat    = document.getElementById('budget-form-category').value;
+  const amount = parseFloat(document.getElementById('budget-form-amount').value);
+  if (!cat || isNaN(amount) || amount <= 0) { showToast('請輸入有效金額', 'error'); return; }
+  try {
+    await POST('/budgets', { category: cat, year, month, limit_amount: amount });
+    showToast('預算已儲存', 'success');
+    closeModal('modal-add-budget');
+    loadBudgets();
+  } catch(e) { showToast('儲存失敗', 'error'); }
+}
+
+async function deleteBudget(id) {
+  if (!confirm('刪除此預算設定？')) return;
+  try { await DEL('/budgets/' + id); loadBudgets(); showToast('已刪除', 'success'); }
+  catch(e) { showToast('刪除失敗', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// AI Analysis
+// ══════════════════════════════════════════════════════════
+function initAITab() {
+  checkAPIKeyStatus();
+}
+
+async function checkAPIKeyStatus() {
+  try {
+    const s = await GET('/settings');
+    const notice = document.getElementById('ai-nokey-notice');
+    notice.style.display = s.anthropic_api_key_set ? 'none' : 'block';
+  } catch(_) {}
+}
+
+function selectAIType(el) {
+  document.querySelectorAll('.ai-type-card').forEach(c => {
+    c.classList.remove('active');
+    c.style.borderColor = '';
+  });
+  el.classList.add('active');
+  el.style.borderColor = '#6366f1';
+  state.aiType = el.dataset.type;
+}
+
+async function runAIAnalysis() {
+  const { year, month } = getYM('ai-year', 'ai-month');
+  const btn     = document.getElementById('ai-run-btn');
+  const spinner = document.getElementById('ai-spinner');
+  const status  = document.getElementById('ai-status');
+  const output  = document.getElementById('ai-output');
+  const card    = document.getElementById('ai-result-card');
+
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  status.textContent = 'AI 分析中...';
+  card.style.display = 'block';
+  output.textContent = '';
+
+  try {
+    const res = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ analysis_type: state.aiType, year, month }),
+    });
+
+    const reader = res.body.getReader();
+    const dec    = new TextDecoder();
+    let buf      = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') break;
+        try {
+          const d = JSON.parse(raw);
+          output.textContent += d.text;
+          output.scrollTop = output.scrollHeight;
+        } catch(_) {}
+      }
+    }
+
+    status.textContent = '分析完成';
+    // Render markdown-like formatting
+    renderMarkdown(output);
+  } catch(e) {
+    output.textContent = '❌ 分析失敗：' + e.message;
+    status.textContent = '';
+    showToast('AI 分析失敗', 'error');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function renderMarkdown(el) {
+  // Simple markdown rendering
+  let html = el.textContent
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+    .replace(/\n/g, '<br>');
+  el.innerHTML = html;
+}
+
+function copyAIResult() {
+  const text = document.getElementById('ai-output').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('已複製到剪貼板', 'success'));
+}
+
+// ══════════════════════════════════════════════════════════
+// Settings
+// ══════════════════════════════════════════════════════════
+async function loadSettings() {
+  try {
+    const s = await GET('/settings');
+    document.getElementById('api-key-status').textContent = s.anthropic_api_key_set ? '✓ API Key 已設定' : '尚未設定';
+    document.getElementById('api-key-input').placeholder = s.anthropic_api_key_set ? '已設定（輸入新值以覆蓋）' : 'sk-ant-...';
+
+    const cats = JSON.parse(s.categories || '[]');
+    state.categories = cats;
+    document.getElementById('categories-display').innerHTML = cats.map(c =>
+      `<span class="badge px-3 py-1" style="background:${c.color}22;color:${c.color};font-size:13px">${c.icon} ${c.name}</span>`
+    ).join('');
+
+    // Update category selectors
+    updateCategorySelectors(cats);
+    loadImportHistory();
+  } catch(e) { showToast('載入設定失敗', 'error'); }
+}
+
+async function saveApiKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (!key) { showToast('請輸入 API Key', 'error'); return; }
+  try {
+    await POST('/settings', { key: 'anthropic_api_key', value: key });
+    document.getElementById('api-key-input').value = '';
+    document.getElementById('api-key-status').textContent = '✓ API Key 已儲存';
+    showToast('API Key 已儲存', 'success');
+  } catch(e) { showToast('儲存失敗', 'error'); }
+}
+
+async function loadImportHistory() {
+  try {
+    const imports = await GET('/imports');
+    const el = document.getElementById('import-history');
+    if (!imports.length) { el.innerHTML = '<div class="text-slate-500 text-sm">尚無匯入記錄</div>'; return; }
+    el.innerHTML = imports.slice(0,10).map(i => `
+      <div class="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
+        <div>
+          <div class="text-sm text-slate-300">${i.filename || '未知'}</div>
+          <div class="text-xs text-slate-600">${i.imported_at?.slice(0,16)} · ${i.record_count} 筆 · ${i.source_hint || ''}</div>
+        </div>
+        <button onclick="deleteImport(${i.id})" class="btn btn-danger text-xs px-2 py-1">撤銷</button>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+async function deleteImport(id) {
+  if (!confirm('撤銷此次匯入？將刪除該批次所有交易記錄。')) return;
+  try {
+    const r = await DEL('/imports/' + id);
+    showToast(`已撤銷匯入，刪除 ${r.deleted} 筆記錄`, 'info');
+    loadImportHistory();
+    if (state.currentTab === 'dashboard') loadDashboard();
+    else loadTransactions();
+  } catch(e) { showToast('撤銷失敗', 'error'); }
+}
+
+function updateCategorySelectors(cats) {
+  const txCatSel  = document.getElementById('tx-category');
+  if (txCatSel) {
+    txCatSel.innerHTML = '<option value="">全部類別</option>' +
+      cats.map(c => `<option value="${c.name}">${c.icon} ${c.name}</option>`).join('');
+  }
+}
+
+async function exportData() {
+  const data = await GET('/transactions?limit=5000&offset=0');
+  const rows = [['日期','描述','金額','類別','收支','備註']];
+  data.data.forEach(t => rows.push([t.date, t.description, t.amount, t.category, t.is_income?'收入':'支出', t.notes||'']));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='消費記錄.csv'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('匯出完成', 'success');
+}
+
+async function confirmClearData() {
+  if (!confirm('確定要清除所有交易記錄嗎？此操作無法復原！')) return;
+  if (!confirm('再次確認：將永久刪除所有資料，繼續嗎？')) return;
+  try {
+    const r = await DEL('/data/all');
+    showToast(`已清除 ${r.deleted} 筆記錄`, 'info');
+    loadDashboard();
+  } catch(e) { showToast('清除失敗', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// Modal helpers
+// ══════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+});
+
+// ══════════════════════════════════════════════════════════
+// Toast
+// ══════════════════════════════════════════════════════════
+function showToast(msg, type = 'info') {
+  const el  = document.getElementById('toast');
+  const msg_el = document.getElementById('toast-msg');
+  el.className = `toast ${type}`;
+  msg_el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ══════════════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════════════
+async function init() {
+  // 初始化年月選擇器
+  initDateSelectors('dash-year',   'dash-month',   loadDashboard);
+  initDateSelectors('budget-year', 'budget-month', loadBudgets);
+  initDateSelectors('ai-year',     'ai-month',     () => {});
+
+  // 拖曳區
+  initDragDrop('modal-drop-zone', uploadFile);
+
+  // 載入設定（取得類別列表）
+  try {
+    const s = await GET('/settings');
+    const cats = JSON.parse(s.categories || '[]');
+    state.categories = cats;
+    updateCategorySelectors(cats);
+  } catch(_) {}
+
+  // 載入儀表板
+  loadDashboard();
+
+  // AI type card 樣式初始化
+  document.querySelector('.ai-type-card.active').style.borderColor = '#6366f1';
+
+  // AI type card hover
+  document.querySelectorAll('.ai-type-card').forEach(c => {
+    c.addEventListener('mouseenter', () => { if (!c.classList.contains('active')) c.style.borderColor = '#475569'; });
+    c.addEventListener('mouseleave', () => { if (!c.classList.contains('active')) c.style.borderColor = ''; });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
