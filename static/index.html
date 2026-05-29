@@ -55,6 +55,25 @@
   .toast.success { border-left: 3px solid #10b981; }
   .toast.error   { border-left: 3px solid #ef4444; }
   .toast.info    { border-left: 3px solid #6366f1; }
+  /* Range picker */
+  .range-chip { padding: 4px 11px; border-radius: 20px; font-size: 12px; border: 1px solid #334155; background: transparent; color: #94a3b8; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .range-chip:hover { border-color: #6366f1; color: #a5b4fc; background: rgba(99,102,241,.08); }
+  .range-chip.active { background: #6366f1; border-color: #6366f1; color: white; }
+  .range-mode-btn { padding: 5px 12px; font-size: 12px; cursor: pointer; border: none; transition: all .15s; }
+  .range-mode-btn.active { background: #6366f1; color: white; }
+  .range-mode-btn:not(.active) { background: transparent; color: #64748b; }
+  .range-mode-btn:not(.active):hover { background: #334155; color: #e2e8f0; }
+  /* Batch import */
+  .import-file-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #0f172a; margin-bottom: 4px; font-size: 12px; }
+  .import-file-item .status-icon { width: 16px; text-align: center; flex-shrink: 0; }
+  .import-file-item .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; }
+  .import-file-item .file-result { flex-shrink: 0; color: #64748b; }
+  /* Trend category chips */
+  .trend-cat-chip { cursor: pointer; }
+  .trend-cat-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .trend-cat-chip .chip-label { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; border: 1px solid #334155; background: transparent; color: #64748b; transition: all .15s; user-select: none; }
+  .trend-cat-chip input:checked + .chip-label { background: #6366f1; border-color: #6366f1; color: white; }
+  .trend-cat-chip:hover .chip-label { border-color: #6366f1; color: #a5b4fc; }
   /* Modal */
   .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; display:none; align-items:center; justify-content:center; }
   .modal-bg.open { display:flex; }
@@ -86,32 +105,79 @@
 
 <!-- ────── 儀表板 ────── -->
 <div id="tab-dashboard" class="tab-panel active p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
     <h1 class="text-xl font-bold text-white">儀表板</h1>
-    <div class="flex items-center gap-2">
-      <select id="dash-year"  class="input text-sm w-24"></select>
-      <select id="dash-month" class="input text-sm w-20"></select>
+    <!-- ── 時間範圍選擇器 ── -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- 模式切換 -->
+      <div class="flex rounded-lg overflow-hidden border border-slate-700">
+        <button id="rmode-quick"  class="range-mode-btn active" onclick="setRangeMode('quick')">快速選擇</button>
+        <button id="rmode-custom" class="range-mode-btn"        onclick="setRangeMode('custom')">日曆範圍</button>
+      </div>
+      <!-- 快速預設 chips -->
+      <div id="range-chips" class="flex gap-1.5 flex-wrap">
+        <button class="range-chip active" data-preset="this_month"  onclick="applyPreset(this)">本月</button>
+        <button class="range-chip"        data-preset="last_month"  onclick="applyPreset(this)">上月</button>
+        <button class="range-chip"        data-preset="last_60"     onclick="applyPreset(this)">近60天</button>
+        <button class="range-chip"        data-preset="last_90"     onclick="applyPreset(this)">近90天</button>
+        <button class="range-chip"        data-preset="last_180"    onclick="applyPreset(this)">近180天</button>
+        <button class="range-chip"        data-preset="this_year"   onclick="applyPreset(this)">今年</button>
+        <button class="range-chip"        data-preset="last_year"   onclick="applyPreset(this)">去年</button>
+      </div>
+      <!-- 自訂日曆範圍（預設隱藏） -->
+      <div id="range-custom-inputs" class="flex items-center gap-2" style="display:none">
+        <input type="date" id="range-start" class="input" style="font-size:12px;padding:5px 8px">
+        <span class="text-slate-500 text-sm">—</span>
+        <input type="date" id="range-end"   class="input" style="font-size:12px;padding:5px 8px">
+        <button class="btn btn-primary" style="font-size:12px;padding:5px 14px" onclick="applyCustomRange()">套用</button>
+      </div>
     </div>
   </div>
 
   <!-- 摘要卡片 -->
   <div class="grid grid-cols-4 gap-4 mb-6" id="summary-cards">
-    <div class="card"><div class="text-xs text-slate-400 mb-1">本月支出</div><div class="text-2xl font-bold text-red-400" id="s-expense">—</div><div class="text-xs text-slate-500 mt-1" id="s-expense-cmp"></div></div>
-    <div class="card"><div class="text-xs text-slate-400 mb-1">上月支出</div><div class="text-2xl font-bold text-slate-300" id="s-prev-expense">—</div></div>
-    <div class="card"><div class="text-xs text-slate-400 mb-1">本月收入</div><div class="text-2xl font-bold text-emerald-400" id="s-income">—</div></div>
+    <div class="card"><div id="s-expense-label" class="text-xs text-slate-400 mb-1">期間支出</div><div class="text-2xl font-bold text-red-400" id="s-expense">—</div><div class="text-xs text-slate-500 mt-1" id="s-expense-cmp"></div></div>
+    <div class="card"><div id="s-prev-label"    class="text-xs text-slate-400 mb-1">上期支出</div><div class="text-2xl font-bold text-slate-300" id="s-prev-expense">—</div></div>
+    <div class="card"><div id="s-income-label"  class="text-xs text-slate-400 mb-1">期間收入</div><div class="text-2xl font-bold text-emerald-400" id="s-income">—</div></div>
     <div class="card"><div class="text-xs text-slate-400 mb-1">淨結餘</div><div class="text-2xl font-bold" id="s-net">—</div></div>
   </div>
 
   <!-- 圖表列 -->
   <div class="grid grid-cols-2 gap-4 mb-6">
-    <div class="card"><div class="text-sm font-semibold text-slate-300 mb-3">📌 本月支出類別分布</div><div class="flex justify-center" style="height:220px"><canvas id="chart-pie"></canvas></div></div>
-    <div class="card"><div class="text-sm font-semibold text-slate-300 mb-3">📈 近 6 個月支出趨勢</div><canvas id="chart-bar" height="220"></canvas></div>
+    <div class="card"><div id="pie-chart-title" class="text-sm font-semibold text-slate-300 mb-3">📌 期間支出類別分布</div><div class="flex justify-center" style="height:220px"><canvas id="chart-pie"></canvas></div></div>
+    <div class="card">
+      <!-- 趨勢圖標題列 + 控制列 -->
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold text-slate-300">📈 月度收支趨勢</div>
+        <div class="flex items-center gap-2">
+          <select id="trend-months" class="text-xs bg-slate-800 border border-slate-700 text-slate-300 rounded px-1 py-0.5">
+            <option value="6">近 6 個月</option>
+            <option value="12" selected>近 12 個月</option>
+            <option value="18">近 18 個月</option>
+            <option value="24">近 24 個月</option>
+          </select>
+          <button id="trend-cat-toggle" onclick="toggleTrendFilter()" class="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded px-2 py-0.5 hover:border-indigo-500 hover:text-indigo-300 transition-colors">篩選類別 ▾</button>
+        </div>
+      </div>
+      <!-- 類別多選 (預設隱藏) -->
+      <div id="trend-cat-panel" class="hidden mb-2 p-2 bg-slate-900 rounded border border-slate-700">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs text-slate-500">選擇類別（可多選，空選=顯示總支出）</span>
+          <div class="flex gap-2">
+            <button onclick="selectAllTrendCats(true)"  class="text-xs text-indigo-400 hover:text-indigo-300">全選</button>
+            <button onclick="selectAllTrendCats(false)" class="text-xs text-slate-500 hover:text-slate-400">清除</button>
+          </div>
+        </div>
+        <div id="trend-cat-checkboxes" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div style="position:relative;height:220px"><canvas id="chart-bar"></canvas></div>
+    </div>
   </div>
 
   <!-- 最常消費 + 最近交易 -->
   <div class="grid grid-cols-2 gap-4">
     <div class="card">
-      <div class="text-sm font-semibold text-slate-300 mb-3">🏆 本月消費TOP 8</div>
+      <div id="top-merchants-title" class="text-sm font-semibold text-slate-300 mb-3">🏆 期間消費 TOP 8</div>
       <div id="top-merchants"></div>
     </div>
     <div class="card">
@@ -283,30 +349,49 @@
 
 <!-- 匯入檔案 Modal -->
 <div id="modal-import" class="modal-bg">
-  <div class="modal">
+  <div class="modal" style="max-width:540px">
     <div class="flex justify-between items-center mb-4">
       <h3 class="font-bold text-white text-lg">📤 匯入交易記錄</h3>
       <button onclick="closeModal('modal-import')" class="text-slate-400 hover:text-white text-xl">✕</button>
     </div>
-    <div id="modal-drop-zone" class="drop-zone mb-4">
-      <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.pdf" style="display:none" onchange="handleFileSelect(this)">
-      <div class="text-4xl mb-3">📂</div>
+
+    <!-- 拖曳 / 選擇區 -->
+    <div id="modal-drop-zone" class="drop-zone mb-3">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.pdf" multiple style="display:none" onchange="handleFileSelect(this)">
+      <div class="text-4xl mb-2">📂</div>
       <div class="text-slate-300 font-medium mb-1">拖曳檔案到此處，或點擊選擇</div>
-      <div class="text-xs text-slate-400 mt-1">
+      <div class="text-xs text-slate-400 mb-2">
         <span class="badge" style="background:#45B7D122;color:#45B7D1">CSV</span>
         <span class="badge" style="background:#96CEB422;color:#96CEB4">Excel</span>
         <span class="badge" style="background:#FF6B6B22;color:#FF6B6B">PDF</span>
+        &nbsp;支援同時選取多個檔案
       </div>
-      <div class="text-xs text-slate-600 mt-2">玉山 / 國泰 / 中信 / 台新 / 一般格式</div>
-      <button class="btn btn-secondary mt-4 text-sm" onclick="document.getElementById('file-input').click()">選擇檔案</button>
+      <button class="btn btn-secondary text-sm" onclick="document.getElementById('file-input').click()">選擇檔案（可多選）</button>
     </div>
-    <div id="import-progress" style="display:none">
-      <div class="flex items-center gap-3 text-slate-300 mb-3">
+
+    <!-- 待匯入隊列 -->
+    <div id="import-queue" style="display:none" class="mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs text-slate-400">已選擇 <span id="queue-count" class="text-white font-medium">0</span> 個檔案</div>
+        <button class="text-xs text-slate-500 hover:text-red-400" onclick="clearImportQueue()">清除</button>
+      </div>
+      <div id="queue-list" class="max-h-36 overflow-y-auto"></div>
+      <button class="btn btn-primary w-full mt-3" onclick="startBatchImport()">
+        開始匯入
+      </button>
+    </div>
+
+    <!-- 進度 -->
+    <div id="import-progress" style="display:none" class="mb-3">
+      <div class="flex items-center gap-3 text-slate-300 mb-2">
         <div class="spinner"></div>
-        <span id="import-status">解析中...</span>
+        <span id="import-status" class="text-sm">解析中...</span>
       </div>
+      <div id="import-items-progress" class="max-h-40 overflow-y-auto"></div>
     </div>
-    <div id="import-result" class="text-sm text-slate-300" style="display:none"></div>
+
+    <!-- 結果 -->
+    <div id="import-result" class="text-sm" style="display:none"></div>
   </div>
 </div>
 
@@ -369,7 +454,7 @@
         <select id="budget-form-category" class="input w-full"></select>
       </div>
       <div>
-        <label class="text-xs text-slate-400 block mb-1">每月上限金額（NT$）</label>
+        <label class="text-xs text-slate-400 block mb-1">每月上限金額（RM）</label>
         <input id="budget-form-amount" type="number" step="100" class="input w-full" placeholder="例如：5000">
       </div>
     </div>
@@ -388,26 +473,98 @@
 // State & Constants
 // ══════════════════════════════════════════════════════════
 const state = {
-  currentTab: 'dashboard',
-  aiType: 'monthly_review',
-  categories: [],
-  charts: {},
-  txPage: 0,
-  txTotal: 0,
-  txPageSize: 50,
+  currentTab:  'dashboard',
+  aiType:      'monthly_review',
+  categories:  [],
+  charts:      {},
+  txPage:      0,
+  txTotal:     0,
+  txPageSize:  50,
+  dashRange:   null,       // { start, end, label } — 由 init() 設定
+  importQueue: [],         // 待批量匯入的 File 物件陣列
 };
 
 const CATEGORY_COLORS = {
   '餐飲':'#FF6B6B','交通':'#4ECDC4','購物':'#45B7D1','娛樂':'#96CEB4',
   '醫療':'#FFEAA7','教育':'#DDA0DD','住宅':'#98D8C8','旅遊':'#FFB347',
-  '收入':'#10b981','其他':'#9ca3af',
+  '收入':'#10b981','轉帳':'#8b5cf6','貸款':'#f97316','信用卡還款':'#ec4899',
+  '其他':'#9ca3af',
 };
 
 const CATEGORY_ICONS = {
   '餐飲':'🍽️','交通':'🚌','購物':'🛍️','娛樂':'🎮',
   '醫療':'🏥','教育':'📚','住宅':'🏠','旅遊':'✈️',
-  '收入':'💵','其他':'📦',
+  '收入':'💵','轉帳':'🔄','貸款':'🏦','信用卡還款':'💳',
+  '其他':'📦',
 };
+
+// ══════════════════════════════════════════════════════════
+// 時間範圍選擇器
+// ══════════════════════════════════════════════════════════
+
+function presetToRange(preset) {
+  const now   = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const y = now.getFullYear(), mo = now.getMonth();  // mo = 0-based
+
+  switch (preset) {
+    case 'this_month': {
+      const start = new Date(y, mo, 1).toISOString().slice(0, 10);
+      return { start, end: today, label: '本月' };
+    }
+    case 'last_month': {
+      const lastDay  = new Date(y, mo, 0);
+      const firstDay = new Date(y, mo - 1, 1);
+      return { start: firstDay.toISOString().slice(0, 10), end: lastDay.toISOString().slice(0, 10), label: '上月' };
+    }
+    case 'last_60': {
+      const start = new Date(now - 59 * 86400000).toISOString().slice(0, 10);
+      return { start, end: today, label: '近60天' };
+    }
+    case 'last_90': {
+      const start = new Date(now - 89 * 86400000).toISOString().slice(0, 10);
+      return { start, end: today, label: '近90天' };
+    }
+    case 'last_180': {
+      const start = new Date(now - 179 * 86400000).toISOString().slice(0, 10);
+      return { start, end: today, label: '近180天' };
+    }
+    case 'this_year':
+      return { start: `${y}-01-01`, end: today, label: '今年' };
+    case 'last_year':
+      return { start: `${y-1}-01-01`, end: `${y-1}-12-31`, label: '去年' };
+    default:
+      return presetToRange('this_month');
+  }
+}
+
+function applyPreset(btn) {
+  state.dashRange = presetToRange(btn.dataset.preset);
+  document.querySelectorAll('.range-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  loadDashboard();
+}
+
+function setRangeMode(mode) {
+  const isQuick = mode === 'quick';
+  document.getElementById('rmode-quick').classList.toggle('active',  isQuick);
+  document.getElementById('rmode-custom').classList.toggle('active', !isQuick);
+  document.getElementById('range-chips').style.display          = isQuick ? 'flex' : 'none';
+  document.getElementById('range-custom-inputs').style.display  = isQuick ? 'none' : 'flex';
+  if (!isQuick) {
+    document.getElementById('range-start').value = state.dashRange.start;
+    document.getElementById('range-end').value   = state.dashRange.end;
+  }
+}
+
+function applyCustomRange() {
+  const start = document.getElementById('range-start').value;
+  const end   = document.getElementById('range-end').value;
+  if (!start || !end || start > end) { showToast('請選擇有效日期範圍', 'error'); return; }
+  state.dashRange = { start, end, label: `${start} ~ ${end.slice(5)}` };
+  document.querySelectorAll('.range-chip').forEach(c => c.classList.remove('active'));
+  loadDashboard();
+}
 
 // ══════════════════════════════════════════════════════════
 // API helpers
@@ -476,51 +633,76 @@ function getYM(yearId, monthId) {
 // Dashboard
 // ══════════════════════════════════════════════════════════
 async function loadDashboard() {
-  const { year, month } = getYM('dash-year', 'dash-month');
+  const { start, end, label } = state.dashRange;
+  const rq = `start=${start}&end=${end}`;
 
   try {
-    const [summary, catData, trend, topM, recent] = await Promise.all([
-      GET(`/analysis/summary?year=${year}&month=${month}`),
-      GET(`/analysis/categories?year=${year}&month=${month}`),
-      GET('/analysis/monthly?months=6'),
-      GET(`/analysis/top-merchants?year=${year}&month=${month}`),
+    const [summary, catData, topM, recent] = await Promise.all([
+      GET(`/analysis/summary?${rq}`),
+      GET(`/analysis/categories?${rq}`),
+      GET(`/analysis/top-merchants?${rq}&limit=8`),
       GET('/analysis/recent?limit=10'),
     ]);
 
-    renderSummaryCards(summary);
-    renderPieChart(catData.breakdown);
-    renderBarChart(trend);
-    renderTopMerchants(topM);
+    renderSummaryCards(summary, label);
+    renderPieChart(catData.breakdown, label);
+    renderTopMerchants(topM, label);
     renderRecentTx(recent);
     updateSidebarCount(summary.total_records);
+
+    // 載入趨勢圖（獨立呼叫，不影響主儀表板載入速度）
+    await loadTrendChart();
   } catch(e) {
     showToast('載入儀表板失敗: ' + e.message, 'error');
   }
 }
 
-function renderSummaryCards(d) {
-  const fmt = n => 'NT$ ' + Math.abs(n).toLocaleString('zh-TW', {maximumFractionDigits: 0});
-  document.getElementById('s-expense').textContent = fmt(d.current.expense);
-  document.getElementById('s-prev-expense').textContent = fmt(d.previous.expense);
-  document.getElementById('s-income').textContent  = fmt(d.current.income);
+async function loadTrendChart() {
+  const months = parseInt(document.getElementById('trend-months')?.value || '12');
+  const selectedCats = getTrendSelectedCategories();
+  const catParam = selectedCats.length > 0 ? `&categories=${encodeURIComponent(selectedCats.join(','))}` : '';
 
-  const net = d.current.net;
+  try {
+    const trend = await GET(`/analysis/monthly?months=${months}${catParam}`);
+    renderBarChart(trend, selectedCats);
+  } catch(e) {
+    // 靜默失敗
+  }
+}
+
+function renderSummaryCards(d, label = '本月') {
+  const fmt = n => 'RM ' + Math.abs(n).toLocaleString('en-MY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+  // 動態更新卡片標籤
+  document.getElementById('s-expense-label').textContent = `${label} 支出`;
+  document.getElementById('s-income-label').textContent  = `${label} 收入`;
+  document.getElementById('s-prev-label').textContent    = '上期支出';
+
+  document.getElementById('s-expense').textContent      = fmt(d.current.expense);
+  document.getElementById('s-prev-expense').textContent = fmt(d.previous.expense);
+  document.getElementById('s-income').textContent       = fmt(d.current.income);
+
+  const net   = d.current.net;
   const netEl = document.getElementById('s-net');
   netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
-  netEl.className = 'text-2xl font-bold ' + (net >= 0 ? 'text-emerald-400' : 'text-red-400');
+  netEl.className   = 'text-2xl font-bold ' + (net >= 0 ? 'text-emerald-400' : 'text-red-400');
 
   const cmp = document.getElementById('s-expense-cmp');
   if (d.expense_change !== null) {
     const up = d.expense_change > 0;
-    cmp.textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.expense_change) + '% 較上月';
-    cmp.className = 'text-xs mt-1 ' + (up ? 'text-red-400' : 'text-emerald-400');
+    cmp.textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.expense_change) + '% 較上期';
+    cmp.className   = 'text-xs mt-1 ' + (up ? 'text-red-400' : 'text-emerald-400');
+  } else {
+    cmp.textContent = '（上期無資料）';
+    cmp.className   = 'text-xs mt-1 text-slate-600';
   }
 }
 
-function renderPieChart(breakdown) {
+function renderPieChart(breakdown, label = '本月') {
+  document.getElementById('pie-chart-title').textContent = `📌 ${label} 支出類別分布`;
   const el = document.getElementById('chart-pie');
   state.charts.pie?.destroy();
-  if (!breakdown.length) { el.parentElement.innerHTML += '<div class="text-center text-slate-500 py-8">本月無支出記錄</div>'; return; }
+  if (!breakdown.length) { el.parentElement.innerHTML += '<div class="text-center text-slate-500 py-8">本期無支出記錄</div>'; return; }
   state.charts.pie = new Chart(el, {
     type: 'doughnut',
     data: {
@@ -535,37 +717,143 @@ function renderPieChart(breakdown) {
       responsive: true, maintainAspectRatio: true,
       plugins: {
         legend: { position: 'right', labels: { color: '#94a3b8', font: {size: 11}, boxWidth: 12 } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: NT$${ctx.parsed.toLocaleString()} (${breakdown[ctx.dataIndex]?.pct}%)` } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: RM${ctx.parsed.toLocaleString()} (${breakdown[ctx.dataIndex]?.pct}%)` } },
       },
     },
   });
 }
 
-function renderBarChart(trend) {
+// 趨勢圖類別色彩表（與 CATEGORY_COLORS 一致但更鮮明）
+const TREND_CAT_COLORS = [
+  '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
+  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#a3e635',
+  '#06b6d4', '#e11d48', '#7c3aed', '#059669', '#d97706',
+];
+
+function renderBarChart(trend, selectedCats = []) {
   const el = document.getElementById('chart-bar');
   state.charts.bar?.destroy();
-  const months = trend.map(t => `${t.year}/${String(t.month).padStart(2,'0')}`);
+
+  // 過濾掉全為 0 的月份（展示有資料的月份，但保留最近月份）
+  const labels = trend.map(t => `${t.year}/${String(t.month).padStart(2,'0')}`);
+
+  let datasets;
+
+  if (selectedCats.length === 0) {
+    // 無類別篩選：顯示總支出 + 總收入
+    datasets = [
+      {
+        label: '支出',
+        data: trend.map(t => t.expense),
+        backgroundColor: '#FF6B6B88',
+        borderColor: '#FF6B6B',
+        borderWidth: 1,
+        borderRadius: 3,
+      },
+      {
+        label: '收入',
+        data: trend.map(t => t.income),
+        backgroundColor: '#10b98144',
+        borderColor: '#10b981',
+        borderWidth: 1,
+        borderRadius: 3,
+      },
+    ];
+  } else {
+    // 有類別篩選：每個類別一個資料集（堆疊）
+    datasets = selectedCats.map((cat, idx) => ({
+      label: cat,
+      data: trend.map(t => t.by_category?.[cat] || 0),
+      backgroundColor: TREND_CAT_COLORS[idx % TREND_CAT_COLORS.length] + 'aa',
+      borderColor: TREND_CAT_COLORS[idx % TREND_CAT_COLORS.length],
+      borderWidth: 1,
+      borderRadius: 3,
+      stack: 'expense',
+    }));
+  }
+
   state.charts.bar = new Chart(el, {
     type: 'bar',
-    data: {
-      labels: months,
-      datasets: [
-        { label: '支出', data: trend.map(t => t.expense), backgroundColor: '#FF6B6B88', borderColor: '#FF6B6B', borderWidth: 1, borderRadius: 4 },
-        { label: '收入', data: trend.map(t => t.income),  backgroundColor: '#10b98144', borderColor: '#10b981', borderWidth: 1, borderRadius: 4 },
-      ],
-    },
+    data: { labels, datasets },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#94a3b8', font: {size: 11} } } },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: {size: 10}, boxWidth: 10, padding: 8 },
+          position: selectedCats.length > 4 ? 'bottom' : 'top',
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: RM ${ctx.parsed.y?.toLocaleString('en-MY', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}`,
+          },
+        },
+      },
       scales: {
-        x: { ticks: { color: '#64748b', font: {size: 10} }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b', font: {size: 10}, callback: v => 'NT$' + v.toLocaleString() }, grid: { color: '#1e293b' } },
+        x: {
+          ticks: { color: '#64748b', font: {size: 10}, maxRotation: 45 },
+          grid:  { color: '#1e293b' },
+          stacked: selectedCats.length > 0,
+        },
+        y: {
+          ticks: { color: '#64748b', font: {size: 10}, callback: v => 'RM ' + v.toLocaleString() },
+          grid:  { color: '#1e293b' },
+          stacked: selectedCats.length > 0,
+        },
       },
     },
   });
 }
 
-function renderTopMerchants(merchants) {
+// ── 趨勢圖類別篩選功能 ─────────────────────────────────────────────────────
+
+function toggleTrendFilter() {
+  const panel = document.getElementById('trend-cat-panel');
+  const btn   = document.getElementById('trend-cat-toggle');
+  const open  = panel.classList.toggle('hidden');
+  btn.textContent = open ? '篩選類別 ▾' : '篩選類別 ▴';
+
+  // 首次展開時載入類別
+  const checkboxes = document.getElementById('trend-cat-checkboxes');
+  if (!open && !checkboxes.dataset.loaded) {
+    loadTrendCategories();
+  }
+}
+
+async function loadTrendCategories() {
+  const checkboxes = document.getElementById('trend-cat-checkboxes');
+  try {
+    const cats = await GET('/analysis/all-categories');
+    checkboxes.dataset.loaded = '1';
+    renderTrendCategoryCheckboxes(cats);
+  } catch(e) {}
+}
+
+function renderTrendCategoryCheckboxes(cats) {
+  const container = document.getElementById('trend-cat-checkboxes');
+  container.innerHTML = cats.map(cat => `
+    <label class="trend-cat-chip">
+      <input type="checkbox" value="${cat}" onchange="loadTrendChart()" class="sr-only">
+      <span class="chip-label">${CATEGORY_ICONS[cat] || '📦'} ${cat}</span>
+    </label>
+  `).join('');
+}
+
+function getTrendSelectedCategories() {
+  const checks = document.querySelectorAll('#trend-cat-checkboxes input[type=checkbox]');
+  const selected = [];
+  checks.forEach(c => { if (c.checked) selected.push(c.value); });
+  return selected;
+}
+
+function selectAllTrendCats(selectAll) {
+  const checks = document.querySelectorAll('#trend-cat-checkboxes input[type=checkbox]');
+  checks.forEach(c => c.checked = selectAll);
+  loadTrendChart();
+}
+
+function renderTopMerchants(merchants, label = '本月') {
+  document.getElementById('top-merchants-title').textContent = `🏆 ${label} 消費 TOP 8`;
   const el = document.getElementById('top-merchants');
   if (!merchants.length) { el.innerHTML = '<div class="text-slate-500 text-sm">無記錄</div>'; return; }
   const maxVal = merchants[0].total;
@@ -573,7 +861,7 @@ function renderTopMerchants(merchants) {
     <div class="mb-2">
       <div class="flex justify-between text-xs mb-1">
         <span class="text-slate-300 truncate mr-2" style="max-width:160px">${m.description}</span>
-        <span class="text-slate-400 flex-shrink-0">NT$${Math.round(m.total).toLocaleString()} <span class="text-slate-600">(${m.count}次)</span></span>
+        <span class="text-slate-400 flex-shrink-0">RM ${m.total.toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})} <span class="text-slate-600">(${m.count}次)</span></span>
       </div>
       <div class="progress-bar"><div class="progress-fill" style="width:${m.total/maxVal*100}%;background:${CATEGORY_COLORS[m.category]||'#6366f1'}"></div></div>
     </div>`).join('');
@@ -583,7 +871,8 @@ function renderRecentTx(txs) {
   const el = document.getElementById('recent-tx');
   el.innerHTML = txs.map(tx => {
     const icon = CATEGORY_ICONS[tx.category] || '📦';
-    const amt = tx.is_income ? `<span class="text-emerald-400">+${Math.abs(tx.amount).toLocaleString()}</span>` : `<span class="text-red-400">-${Math.abs(tx.amount).toLocaleString()}</span>`;
+    const fmtAmt = v => 'RM ' + Math.abs(v).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const amt = tx.is_income ? `<span class="text-emerald-400">+${fmtAmt(tx.amount)}</span>` : `<span class="text-red-400">-${fmtAmt(tx.amount)}</span>`;
     return `<div class="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
       <div class="flex items-center gap-2">
         <span>${icon}</span>
@@ -639,7 +928,7 @@ function renderTxTable(txs) {
     const color = CATEGORY_COLORS[tx.category] || '#9ca3af';
     const amtClass = tx.is_income ? 'text-emerald-400' : 'text-red-400';
     const amtSign  = tx.is_income ? '+' : '-';
-    const amt = `${amtSign}NT$${Math.abs(tx.amount).toLocaleString('zh-TW', {maximumFractionDigits: 0})}`;
+    const amt = `${amtSign}RM ${Math.abs(tx.amount).toLocaleString('en-MY', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     return `<tr>
       <td class="text-slate-400 text-xs">${tx.date}</td>
       <td class="text-slate-200 font-medium" style="max-width:200px"><div class="truncate">${tx.description}</div></td>
@@ -746,58 +1035,168 @@ async function autoCategory() {
 }
 
 // ══════════════════════════════════════════════════════════
-// Import
+// Import（批量匯入）
 // ══════════════════════════════════════════════════════════
 function openImportModal() {
-  document.getElementById('import-result').style.display = 'none';
+  state.importQueue = [];
+  document.getElementById('import-result').style.display   = 'none';
   document.getElementById('import-progress').style.display = 'none';
+  document.getElementById('import-queue').style.display    = 'none';
+  document.getElementById('modal-drop-zone').style.display = 'block';
+  document.getElementById('file-input').value = '';
   openModal('modal-import');
 }
 
 function handleFileSelect(input) {
-  if (input.files[0]) uploadFile(input.files[0]);
+  const files = Array.from(input.files).filter(f =>
+    /\.(csv|xlsx|xls|pdf)$/i.test(f.name)
+  );
+  if (files.length > 0) addToImportQueue(files);
 }
 
-async function uploadFile(file) {
-  const progress = document.getElementById('import-progress');
-  const status   = document.getElementById('import-status');
-  const result   = document.getElementById('import-result');
-  progress.style.display = 'block';
-  result.style.display   = 'none';
-  status.textContent = `解析 ${file.name}...`;
+function addToImportQueue(files) {
+  // 避免重複加入相同檔名
+  const existing = new Set(state.importQueue.map(f => f.name));
+  files.forEach(f => { if (!existing.has(f.name)) state.importQueue.push(f); });
+  renderImportQueue();
+}
 
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const res = await fetch('/api/import', { method: 'POST', body: fd });
-    const data = await res.json();
-    progress.style.display = 'none';
-    result.style.display = 'block';
-    if (data.success) {
-      result.innerHTML = `<div class="text-emerald-400 font-medium mb-1">✓ ${data.message}</div><div class="text-slate-500 text-xs">來源識別：${data.source} | 匯入批次 #${data.import_id}</div>`;
-      showToast(data.message, 'success');
-      setTimeout(() => { closeModal('modal-import'); loadTransactions(); if(state.currentTab==='dashboard') loadDashboard(); }, 1500);
-    } else {
-      result.innerHTML = `<div class="text-yellow-400">⚠️ ${data.message}</div>`;
-    }
-  } catch(e) {
-    progress.style.display = 'none';
-    result.style.display = 'block';
-    result.innerHTML = `<div class="text-red-400">✗ 匯入失敗：${e.message}</div>`;
-    showToast('匯入失敗', 'error');
+function renderImportQueue() {
+  const queue = state.importQueue;
+  if (!queue.length) {
+    document.getElementById('import-queue').style.display = 'none';
+    return;
+  }
+  document.getElementById('import-queue').style.display    = 'block';
+  document.getElementById('modal-drop-zone').style.display = 'none';
+  document.getElementById('queue-count').textContent = queue.length;
+
+  document.getElementById('queue-list').innerHTML = queue.map((f, i) => `
+    <div class="import-file-item">
+      <span class="status-icon">📄</span>
+      <span class="file-name" title="${f.name}">${f.name}</span>
+      <span class="file-result text-slate-500">${(f.size/1024).toFixed(0)} KB</span>
+      <button onclick="removeFromQueue(${i})" class="text-slate-600 hover:text-red-400 ml-1 text-xs">✕</button>
+    </div>`).join('');
+}
+
+function removeFromQueue(idx) {
+  state.importQueue.splice(idx, 1);
+  if (!state.importQueue.length) {
+    document.getElementById('import-queue').style.display    = 'none';
+    document.getElementById('modal-drop-zone').style.display = 'block';
+    document.getElementById('file-input').value = '';
+  } else {
+    renderImportQueue();
   }
 }
 
-// Drag & drop
-function initDragDrop(zoneId, onFile) {
+function clearImportQueue() {
+  state.importQueue = [];
+  document.getElementById('import-queue').style.display    = 'none';
+  document.getElementById('modal-drop-zone').style.display = 'block';
+  document.getElementById('file-input').value = '';
+}
+
+async function startBatchImport() {
+  const files = [...state.importQueue];
+  if (!files.length) return;
+
+  // 切換到進度視圖
+  document.getElementById('import-queue').style.display    = 'none';
+  document.getElementById('import-progress').style.display = 'block';
+  document.getElementById('import-result').style.display   = 'none';
+
+  const statusEl   = document.getElementById('import-status');
+  const progressEl = document.getElementById('import-items-progress');
+
+  let totalImported = 0;
+  const results = [];
+
+  // 初始化每個檔案的狀態列
+  progressEl.innerHTML = files.map((f, i) => `
+    <div id="imp-item-${i}" class="import-file-item">
+      <span class="status-icon" id="imp-icon-${i}">⏳</span>
+      <span class="file-name">${f.name}</span>
+      <span class="file-result" id="imp-res-${i}" class="text-slate-500">等待中</span>
+    </div>`).join('');
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    statusEl.textContent = `(${i+1}/${files.length}) 正在解析 ${file.name}...`;
+    document.getElementById(`imp-icon-${i}`).textContent = '🔄';
+    document.getElementById(`imp-res-${i}`).textContent  = '解析中...';
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res  = await fetch('/api/import', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (data.success) {
+        totalImported += data.count;
+        results.push({ name: file.name, success: true, count: data.count, source: data.source });
+        document.getElementById(`imp-icon-${i}`).textContent = '✅';
+        document.getElementById(`imp-res-${i}`).textContent  = `+${data.count} 筆`;
+        document.getElementById(`imp-res-${i}`).style.color  = '#10b981';
+      } else {
+        results.push({ name: file.name, success: false, message: data.message });
+        document.getElementById(`imp-icon-${i}`).textContent = '⚠️';
+        document.getElementById(`imp-res-${i}`).textContent  = data.message?.slice(0, 20) || '解析失敗';
+        document.getElementById(`imp-res-${i}`).style.color  = '#f59e0b';
+      }
+    } catch(e) {
+      results.push({ name: file.name, success: false, message: e.message });
+      document.getElementById(`imp-icon-${i}`).textContent = '❌';
+      document.getElementById(`imp-res-${i}`).textContent  = '錯誤';
+      document.getElementById(`imp-res-${i}`).style.color  = '#ef4444';
+    }
+  }
+
+  // 顯示最終結果
+  statusEl.textContent = '匯入完成！';
+  document.getElementById('import-progress').style.display = 'none';
+  document.getElementById('import-result').style.display   = 'block';
+
+  const successCount = results.filter(r => r.success).length;
+  document.getElementById('import-result').innerHTML = `
+    <div class="rounded-lg p-3 ${totalImported > 0 ? 'bg-emerald-950 border border-emerald-800' : 'bg-slate-900'}">
+      <div class="font-medium mb-2 ${totalImported > 0 ? 'text-emerald-400' : 'text-yellow-400'}">
+        ${totalImported > 0 ? '✅' : '⚠️'}
+        共匯入 <strong>${totalImported}</strong> 筆交易記錄
+        （${successCount}/${files.length} 個檔案成功）
+      </div>
+      ${results.map(r => `
+        <div class="flex items-center gap-2 text-xs py-0.5">
+          <span>${r.success ? '✓' : '✗'}</span>
+          <span class="flex-1 truncate ${r.success ? 'text-slate-400' : 'text-red-400'}">${r.name}</span>
+          <span class="${r.success ? 'text-emerald-400' : 'text-slate-500'}">${r.success ? `+${r.count} 筆` : (r.message?.slice(0,25)||'')}</span>
+        </div>`).join('')}
+    </div>`;
+
+  if (totalImported > 0) {
+    showToast(`批量匯入完成：共 ${totalImported} 筆`, 'success');
+    state.importQueue = [];
+    setTimeout(() => {
+      closeModal('modal-import');
+      loadTransactions();
+      if (state.currentTab === 'dashboard') loadDashboard();
+    }, 2500);
+  }
+}
+
+// Drag & drop（支援多檔案）
+function initDragDrop(zoneId) {
   const zone = document.getElementById(zoneId);
   if (!zone) return;
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
   zone.addEventListener('drop', e => {
     e.preventDefault(); zone.classList.remove('dragging');
-    const f = e.dataTransfer.files[0];
-    if (f) onFile(f);
+    const files = Array.from(e.dataTransfer.files).filter(f =>
+      /\.(csv|xlsx|xls|pdf)$/i.test(f.name)
+    );
+    if (files.length > 0) addToImportQueue(files);
   });
   zone.addEventListener('click', () => document.getElementById('file-input').click());
 }
@@ -831,12 +1230,12 @@ function renderBudgets(budgets) {
           ${warn}
         </div>
         <div class="flex items-center gap-3">
-          <span class="text-sm text-slate-400">NT$${Math.round(b.spent).toLocaleString()} / NT$${Math.round(b.limit_amount).toLocaleString()}</span>
+          <span class="text-sm text-slate-400">RM ${b.spent.toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})} / RM ${b.limit_amount.toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
           <button onclick="deleteBudget(${b.id})" class="text-slate-600 hover:text-red-400 text-sm">✕</button>
         </div>
       </div>
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
-      <div class="text-xs text-slate-500 mt-1 text-right">${b.pct}% 已使用  ·  剩餘 NT$${Math.max(0, Math.round(b.limit_amount - b.spent)).toLocaleString()}</div>
+      <div class="text-xs text-slate-500 mt-1 text-right">${b.pct}% 已使用  ·  剩餘 RM ${Math.max(0, b.limit_amount - b.spent).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
     </div>`;
   }).join('');
 }
@@ -1084,13 +1483,15 @@ function showToast(msg, type = 'info') {
 // Init
 // ══════════════════════════════════════════════════════════
 async function init() {
-  // 初始化年月選擇器
-  initDateSelectors('dash-year',   'dash-month',   loadDashboard);
+  // 初始化儀表板日期範圍（預設：本月）
+  state.dashRange = presetToRange('this_month');
+
+  // 初始化預算 / AI 年月選擇器
   initDateSelectors('budget-year', 'budget-month', loadBudgets);
   initDateSelectors('ai-year',     'ai-month',     () => {});
 
-  // 拖曳區
-  initDragDrop('modal-drop-zone', uploadFile);
+  // 拖曳區（批量）
+  initDragDrop('modal-drop-zone');
 
   // 載入設定（取得類別列表）
   try {
@@ -1099,6 +1500,9 @@ async function init() {
     state.categories = cats;
     updateCategorySelectors(cats);
   } catch(_) {}
+
+  // 趨勢圖月數選擇器
+  document.getElementById('trend-months')?.addEventListener('change', loadTrendChart);
 
   // 載入儀表板
   loadDashboard();

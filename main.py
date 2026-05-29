@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -172,25 +172,36 @@ async def delete_import(import_id: int):
 
 @app.get("/api/analysis/summary")
 async def get_summary(
-    year:  int = Query(default=datetime.today().year),
-    month: int = Query(default=datetime.today().month),
+    year:  int           = Query(default=datetime.today().year),
+    month: int           = Query(default=datetime.today().month),
+    start: Optional[str] = None,
+    end:   Optional[str] = None,
 ):
-    current = db.get_monthly_summary(year, month)
-    # 上月
-    if month == 1:
-        prev = db.get_monthly_summary(year - 1, 12)
-    else:
-        prev = db.get_monthly_summary(year, month - 1)
-
-    # 環比變化
     def pct_change(cur, pre):
         if not pre:
             return None
         return round((cur - pre) / pre * 100, 1)
 
+    if start and end:
+        current = db.get_range_summary(start, end)
+        # 計算等長上期（start 之前同等天數）
+        s = datetime.strptime(start, "%Y-%m-%d")
+        e = datetime.strptime(end,   "%Y-%m-%d")
+        duration   = (e - s).days + 1
+        prev_end   = s - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=duration - 1)
+        prev = db.get_range_summary(
+            prev_start.strftime("%Y-%m-%d"),
+            prev_end.strftime("%Y-%m-%d"),
+        )
+    else:
+        current = db.get_monthly_summary(year, month)
+        prev    = db.get_monthly_summary(year - 1 if month == 1 else year,
+                                         12 if month == 1 else month - 1)
+
     return {
-        "current":  current,
-        "previous": prev,
+        "current":        current,
+        "previous":       prev,
         "expense_change": pct_change(current["expense"], prev["expense"]),
         "income_change":  pct_change(current["income"],  prev["income"]),
         "total_records":  db.count_transactions(),
@@ -199,27 +210,44 @@ async def get_summary(
 
 @app.get("/api/analysis/categories")
 async def get_categories(
-    year:  int = Query(default=datetime.today().year),
-    month: int = Query(default=datetime.today().month),
+    year:  int           = Query(default=datetime.today().year),
+    month: int           = Query(default=datetime.today().month),
+    start: Optional[str] = None,
+    end:   Optional[str] = None,
 ):
-    breakdown   = db.get_category_breakdown(year, month)
-    total_exp   = sum(r["total"] for r in breakdown)
+    if start and end:
+        breakdown = db.get_range_category_breakdown(start, end)
+    else:
+        breakdown = db.get_category_breakdown(year, month)
+    total_exp = sum(r["total"] for r in breakdown)
     for r in breakdown:
         r["pct"] = round(r["total"] / total_exp * 100, 1) if total_exp else 0
     return {"breakdown": breakdown, "total_expense": round(total_exp, 2)}
 
 
 @app.get("/api/analysis/monthly")
-async def get_monthly_trend(months: int = Query(default=12, le=24)):
-    return db.get_monthly_trend(months)
+async def get_monthly_trend(
+    months:     int           = Query(default=12, le=36),
+    categories: Optional[str] = None,    # 逗號分隔的類別清單，如 "餐飲,購物,交通"
+):
+    """
+    取得近 N 個月收支趨勢。
+    若傳入 categories 參數，額外回傳各類別的逐月支出。
+    """
+    cat_list = [c.strip() for c in categories.split(",")] if categories else None
+    return db.get_monthly_category_trend(months, cat_list)
 
 
 @app.get("/api/analysis/top-merchants")
 async def get_top_merchants(
-    year:  int = Query(default=datetime.today().year),
-    month: int = Query(default=datetime.today().month),
-    limit: int = Query(default=8, le=20),
+    year:  int           = Query(default=datetime.today().year),
+    month: int           = Query(default=datetime.today().month),
+    limit: int           = Query(default=8, le=20),
+    start: Optional[str] = None,
+    end:   Optional[str] = None,
 ):
+    if start and end:
+        return db.get_range_top_merchants(start, end, limit)
     return db.get_top_merchants(year, month, limit)
 
 
@@ -344,6 +372,12 @@ async def clear_all_data():
 # ══════════════════════════════════════════════════════════
 # 分類建議 API
 # ══════════════════════════════════════════════════════════
+
+@app.get("/api/analysis/all-categories")
+async def get_all_categories():
+    """回傳資料庫中出現過的所有類別（用於趨勢圖多選）"""
+    return db.get_all_categories()
+
 
 @app.get("/api/categorize")
 async def categorize_hint(description: str, is_income: int = 0):

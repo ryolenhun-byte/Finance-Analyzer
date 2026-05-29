@@ -266,13 +266,114 @@ class FinanceDatabase:
         return [dict(r) for r in rows]
 
     def get_monthly_trend(self, months: int = 12) -> List[Dict[str, Any]]:
-        """取得近 N 個月的收支趨勢"""
+        """取得近 N 個月的收支趨勢（從最舊到最新）"""
         result = []
         today  = datetime.today()
         for i in range(months - 1, -1, -1):
-            y = today.year  - (today.month - 1 - i + 11) // 12
-            m = (today.month - 1 - i) % 12 + 1
+            # i 個月前（i=months-1 最舊，i=0 最新）
+            m0 = today.month - 1 - i   # 0-indexed offset（可為負）
+            y  = today.year + m0 // 12
+            m  = m0 % 12 + 1
             result.append(self.get_monthly_summary(y, m))
+        return result
+
+    def get_monthly_category_trend(
+        self, months: int = 12, categories: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        取得近 N 個月各類別的支出趨勢
+
+        Returns:
+            [
+              {
+                "year": 2026, "month": 2,
+                "expense": 1000.0, "income": 500.0,
+                "by_category": {"餐飲": 300.0, "購物": 200.0, ...}
+              },
+              ...
+            ]
+        """
+        today = datetime.today()
+        # 計算起始日期（最舊的那個月的第一天）
+        # 最舊月 = months-1 個月前（i=months-1 時的月份）
+        m0         = today.month - 1 - (months - 1)   # 0-indexed offset，可為負
+        start_y    = today.year + m0 // 12
+        start_m    = m0 % 12 + 1
+        start_date = f"{start_y:04d}-{start_m:02d}-01"
+
+        # 先取所有月份的總支出/收入
+        with self._conn() as conn:
+            summary_rows = conn.execute(
+                """SELECT strftime('%Y', date) as yr,
+                          strftime('%m', date) as mo,
+                          SUM(CASE WHEN is_income=0 THEN ABS(amount) ELSE 0 END) as expense,
+                          SUM(CASE WHEN is_income=1 THEN amount ELSE 0 END) as income
+                   FROM transactions
+                   WHERE date >= ?
+                   GROUP BY yr, mo
+                   ORDER BY yr, mo""",
+                (start_date,),
+            ).fetchall()
+
+            # 取各類別每月支出
+            if categories:
+                placeholders = ",".join("?" * len(categories))
+                cat_rows = conn.execute(
+                    f"""SELECT strftime('%Y', date) as yr,
+                               strftime('%m', date) as mo,
+                               category,
+                               SUM(ABS(amount)) as total
+                        FROM transactions
+                        WHERE date >= ? AND is_income=0
+                          AND category IN ({placeholders})
+                        GROUP BY yr, mo, category
+                        ORDER BY yr, mo""",
+                    [start_date] + list(categories),
+                ).fetchall()
+            else:
+                cat_rows = conn.execute(
+                    """SELECT strftime('%Y', date) as yr,
+                              strftime('%m', date) as mo,
+                              category,
+                              SUM(ABS(amount)) as total
+                       FROM transactions
+                       WHERE date >= ? AND is_income=0
+                       GROUP BY yr, mo, category
+                       ORDER BY yr, mo""",
+                    (start_date,),
+                ).fetchall()
+
+        # 建立按月份分組的 by_category 字典
+        cat_by_month: Dict[str, Dict[str, float]] = {}
+        for r in cat_rows:
+            key = f"{r['yr']}-{r['mo']}"
+            cat_by_month.setdefault(key, {})[r["category"]] = round(float(r["total"]), 2)
+
+        # 建立完整的月份列表（包含 0 記錄的月份）
+        result = []
+        for i in range(months - 1, -1, -1):
+            m0 = today.month - 1 - i   # 0-indexed offset（可為負）
+            y  = today.year + m0 // 12
+            m  = m0 % 12 + 1
+            result.append({
+                "year": y, "month": m,
+                "expense": 0.0, "income": 0.0,
+                "by_category": {},
+            })
+
+        # 填入實際數值
+        for r in summary_rows:
+            y, mo = int(r["yr"]), int(r["mo"])
+            for item in result:
+                if item["year"] == y and item["month"] == mo:
+                    item["expense"] = round(float(r["expense"] or 0), 2)
+                    item["income"]  = round(float(r["income"]  or 0), 2)
+                    break
+
+        for item in result:
+            key = f"{item['year']:04d}-{item['month']:02d}"
+            item["by_category"] = cat_by_month.get(key, {})
+
         return result
 
     def get_daily_expenses(self, start: str, end: str) -> List[Dict[str, Any]]:
@@ -299,6 +400,58 @@ class FinanceDatabase:
                           COUNT(*) as count
                    FROM transactions
                    WHERE date >= ? AND date < ? AND is_income=0
+                   GROUP BY description
+                   ORDER BY total DESC
+                   LIMIT ?""",
+                (start, end, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_range_summary(self, start: str, end: str) -> Dict[str, Any]:
+        """取得任意日期範圍的收支摘要"""
+        with self._conn() as conn:
+            r = conn.execute(
+                """SELECT
+                       SUM(CASE WHEN is_income=0 THEN ABS(amount) ELSE 0 END) AS expense,
+                       SUM(CASE WHEN is_income=1 THEN amount        ELSE 0 END) AS income,
+                       COUNT(CASE WHEN is_income=0 THEN 1 END)                  AS expense_count,
+                       COUNT(CASE WHEN is_income=1 THEN 1 END)                  AS income_count
+                   FROM transactions
+                   WHERE date >= ? AND date <= ?""",
+                (start, end),
+            ).fetchone()
+        r = dict(r) if r else {}
+        return {
+            "start":         start,
+            "end":           end,
+            "expense":       round(r.get("expense") or 0, 2),
+            "income":        round(r.get("income")  or 0, 2),
+            "net":           round((r.get("income") or 0) - (r.get("expense") or 0), 2),
+            "expense_count": r.get("expense_count") or 0,
+            "income_count":  r.get("income_count")  or 0,
+        }
+
+    def get_range_category_breakdown(self, start: str, end: str) -> List[Dict[str, Any]]:
+        """取得任意日期範圍各類別支出分布"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT category, SUM(ABS(amount)) AS total, COUNT(*) AS count
+                   FROM transactions
+                   WHERE date >= ? AND date <= ? AND is_income=0
+                   GROUP BY category
+                   ORDER BY total DESC""",
+                (start, end),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_range_top_merchants(self, start: str, end: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """取得任意日期範圍消費最多的商家"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT description, category,
+                          SUM(ABS(amount)) AS total, COUNT(*) AS count
+                   FROM transactions
+                   WHERE date >= ? AND date <= ? AND is_income=0
                    GROUP BY description
                    ORDER BY total DESC
                    LIMIT ?""",
@@ -408,6 +561,17 @@ class FinanceDatabase:
     def count_transactions(self) -> int:
         with self._conn() as conn:
             return conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+
+    def get_all_categories(self) -> List[str]:
+        """回傳資料庫中出現過的所有支出類別（依金額排序）"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT DISTINCT category
+                   FROM transactions
+                   WHERE is_income=0
+                   ORDER BY category"""
+            ).fetchall()
+        return [r["category"] for r in rows]
 
     def clear_all_transactions(self) -> int:
         with self._conn() as conn:

@@ -10,14 +10,22 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """你是一位專業的個人理財顧問，專精於分析台灣消費者的消費習慣。
+SYSTEM_PROMPT = """你是一位專業的個人理財顧問，能夠分析馬來西亞與台灣消費者的消費習慣與財務狀況。
+
+你熟悉的財務生態系統：
+- 馬來西亞：DuitNow（QR 及轉帳）、Touch 'n Go、Wise 國際匯款、Grab Pay、Boost
+  - 馬來西亞銀行：Public Bank (PBB)、Maybank、CIMB、RHB
+  - 馬來西亞生活成本：以 RM（馬幣）計算，物價與消費水平適中
+  - 常見分類：信用卡還款、貸款自動扣款（房屋/車）、DuitNow 個人轉帳
+- 台灣：悠遊卡、Line Pay、街口支付、台灣各大銀行
 
 你的分析風格：
 - 直接、具體、有實際操作價值
 - 使用繁體中文，語氣親切但專業
-- 數字分析要精確，給出百分比和金額
-- 建議要可行，考慮台灣的生活水平與物價
+- 數字分析要精確，給出百分比和金額（自動判斷貨幣：RM 或 NT$）
+- 建議要可行，考慮當地生活水平與物價
 - 避免空泛的「建議節省開銷」，要指出具體的項目和方法
+- 對於「轉帳」類別，能區分個人轉帳、薪資入帳、信用卡還款、貸款等
 
 回應格式使用 Markdown，適度使用 emoji 讓報告更易讀。"""
 
@@ -55,8 +63,10 @@ async def stream_analysis(
         yield "❌ 未設定 Anthropic API Key，請前往「設定」頁面配置。"
         return
 
+    currency = _detect_currency(transactions)
     prompt = _build_prompt(
-        analysis_type, transactions, monthly_summary, category_breakdown, budgets
+        analysis_type, transactions, monthly_summary, category_breakdown, budgets,
+        currency=currency,
     )
 
     client = anthropic.Anthropic(api_key=key)
@@ -94,14 +104,15 @@ def _build_prompt(
     monthly_summary: Optional[Dict],
     category_breakdown: Optional[List],
     budgets: Optional[List],
+    currency: str = "RM",
 ) -> str:
     """根據分析類型組合 prompt"""
 
     # 壓縮交易資料（限制 token 用量）
-    tx_summary = _summarize_transactions(transactions)
-    budget_str = _format_budgets(budgets or [])
-    monthly_str = _format_monthly(monthly_summary)
-    category_str = _format_categories(category_breakdown or [])
+    tx_summary   = _summarize_transactions(transactions, currency)
+    budget_str   = _format_budgets(budgets or [], currency)
+    monthly_str  = _format_monthly(monthly_summary, currency)
+    category_str = _format_categories(category_breakdown or [], currency)
 
     prompts = {
         "monthly_review": f"""請對以下消費數據進行本月度綜合分析：
@@ -172,7 +183,7 @@ def _build_prompt(
     )
 
 
-def _summarize_transactions(transactions: List[Dict]) -> str:
+def _summarize_transactions(transactions: List[Dict], currency: str = "RM") -> str:
     """壓縮交易列表為簡潔文字"""
     if not transactions:
         return "（無交易記錄）"
@@ -180,43 +191,57 @@ def _summarize_transactions(transactions: List[Dict]) -> str:
     lines = []
     for tx in transactions[:100]:  # 最多 100 筆
         date     = tx.get("date", "")[:10]
-        desc     = tx.get("description", "")[:20]
+        desc     = tx.get("description", "")[:25]
         amount   = tx.get("amount", 0)
         category = tx.get("category", "其他")
         sign     = "+" if tx.get("is_income") else ""
-        lines.append(f"{date}  {desc:<20}  {category:<6}  {sign}{amount:,.0f}")
+        lines.append(
+            f"{date}  {desc:<25}  {category:<8}  {sign}{currency}{abs(amount):,.2f}"
+        )
 
     return "\n".join(lines)
 
 
-def _format_monthly(summary: Optional[Dict]) -> str:
+def _detect_currency(transactions: List[Dict]) -> str:
+    """根據交易來源自動判斷貨幣（RM 或 NT$）"""
+    for tx in (transactions or []):
+        src = (tx.get("source") or "").lower()
+        if any(k in src for k in [
+            "public bank", "maybank", "cimb", "rhb", "malaysia",
+            "uob", "united overseas",
+        ]):
+            return "RM"
+    return "NT$"
+
+
+def _format_monthly(summary: Optional[Dict], currency: str = "RM") -> str:
     if not summary:
         return ""
     return (
-        f"- 本月支出：NT$ {summary.get('expense', 0):,.0f}\n"
-        f"- 本月收入：NT$ {summary.get('income', 0):,.0f}\n"
-        f"- 淨結餘：NT$ {summary.get('net', 0):,.0f}\n"
+        f"- 本月支出：{currency} {summary.get('expense', 0):,.2f}\n"
+        f"- 本月收入：{currency} {summary.get('income', 0):,.2f}\n"
+        f"- 淨結餘：{currency} {summary.get('net', 0):,.2f}\n"
         f"- 消費筆數：{summary.get('expense_count', 0)} 筆"
     )
 
 
-def _format_categories(breakdown: List[Dict]) -> str:
+def _format_categories(breakdown: List[Dict], currency: str = "RM") -> str:
     if not breakdown:
         return "（無分類數據）"
     lines = []
     for item in breakdown:
         lines.append(
             f"- {item.get('category', '?')}: "
-            f"NT$ {item.get('total', 0):,.0f} "
+            f"{currency} {item.get('total', 0):,.2f} "
             f"（{item.get('count', 0)} 筆）"
         )
     return "\n".join(lines)
 
 
-def _format_budgets(budgets: List[Dict]) -> str:
+def _format_budgets(budgets: List[Dict], currency: str = "RM") -> str:
     if not budgets:
         return ""
     lines = ["## 預算設定"]
     for b in budgets:
-        lines.append(f"- {b.get('category')}: NT$ {b.get('limit_amount', 0):,.0f}")
+        lines.append(f"- {b.get('category')}: {currency} {b.get('limit_amount', 0):,.2f}")
     return "\n".join(lines)

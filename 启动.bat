@@ -21,7 +21,7 @@ if errorlevel 1 (
 
 :: 安裝/更新依賴套件
 echo  [1/2] 確認依賴套件...
-pip install fastapi "uvicorn[standard]" python-multipart pandas openpyxl chardet anthropic -q --disable-pip-version-check
+pip install fastapi "uvicorn[standard]" python-multipart pandas openpyxl chardet anthropic pdfplumber -q --disable-pip-version-check
 if errorlevel 1 (
     echo  [警告] 部分套件安裝失敗，嘗試繼續...
 )
