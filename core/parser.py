@@ -590,10 +590,10 @@ _UOB_SAV_SKIP_PARTIAL = [
     "balance b/f", "baki b/", "closing balance", "opening balance",
 ]
 
-# UOB CC — 跳過的行（不含 annual fee，因為 annual fee waiver 是有效收入/支出）
+# UOB CC — 跳過的行（bc interest / bc instalment / retail interest 屬真實費用，不跳過）
 _UOB_CC_SKIP_PARTIAL = [
     "previous bal", "credit limit", "sub-total", "minimum payment",
-    "end of statement", "retail interest", "bc interest", "bc instalment",
+    "end of statement",
     # 頁尾地址行
     "united overseas bank", "menara uob", "jalan raja laut",
 ]

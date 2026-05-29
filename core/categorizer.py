@@ -59,6 +59,22 @@ _RULES: List[Dict[str, Any]] = [
         ],
     },
 
+    # ── 信用卡費用（高優先，避免被其他規則誤分）──────────────────────────
+    {
+        "category": "信用卡費用",
+        "keywords": [
+            # UOB 分期付款（BC = Balance Conversion）
+            "bc instalment", "bc installment",
+            # 分期利息 & 循環利息
+            "bc interest", "retail interest",
+            # 年費 & 服務稅（主卡/附屬卡）
+            "annual fee", "annual fee waiver",
+            "service tax-principal", "service tax-supplementary",
+            "service tax",          # 通用服務稅
+            "finance charge",
+        ],
+    },
+
     # ── 轉帳（高優先，避免轉帳備注文字被誤分為餐飲/娛樂）──────────────────
     {
         "category": "轉帳",
